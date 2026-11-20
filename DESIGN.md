@@ -52,10 +52,20 @@ shows while a game loads anyway (a 3-second hold looked like a slower start).
 So a game with a copy from the PC waiting syncs during that splash, with nothing extra on screen. A time limit (a few
 seconds) starts the game anyway if the PC stops answering, and the sync is left for the next connection.
 
-A game with an open conflict needs a choice before it starts, which the kernel can't show. The plan is to turn that
-launch into one of Nativ Sync with the game's id, which shows the choice (Keep the Vita's, Use the PC's, Play without
-syncing) and then starts the game itself, past the guard. How the shell takes a launch replaced this way is the next thing
-to try. Any other game starts as it would without Nativ Sync.
+A game with an open conflict gets the choice on the spot, drawn over its splash while the launch is held: checked on
+3.65 with a prototype screen. The kernel module allocates a framebuffer in kernel CDRAM (memblock type 0x40404006, 1024
+pitch, A8B8G8R8), shows it on the primary display's overlay layer (ksceDisplaySetFrameBufInternal(head, 1, ...), the layer
+the shell's own overlays use, alpha-blended over the splash), reads the buttons with ksceCtrlPeekBufferPositive, and on an
+answer clears the layer to transparent and lets the launch go on; the game then starts normally. The hook runs on a stack
+of its own (ksceKernelRunWithStack, 16 KB): the launch thread's is small, and without it the first try stopped launches
+dead. BubbleLock (Rinnegatamante) locks games at launch the same way.
+
+Two other routes were tried and dropped: starting Nativ Sync in the game's place (the swapped process takes the game's
+identity: title id, app0) and refusing the launch (the shell shows "An error has occurred (C1-2758-2)").
+
+The screen shows the two saves (when, and the game's own description), and ✕ Keep the Vita's, □ Use the PC's, ○ Play
+without syncing. No answer within a time limit plays without syncing. Any other game starts as it would without Nativ
+Sync.
 
 Playing on the Vita away from the PC after playing on the PC can't be caught: the Vita doesn't know what the PC did, so it
 plays its own save, and the conflict appears at the next connection.
