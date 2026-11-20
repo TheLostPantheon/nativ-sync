@@ -37,7 +37,20 @@ Times are never compared to pick a side. The two clocks can disagree, and the la
 progress. A save is copied whole (all its files and slots together). Games keep shared state across their files, so taking
 one side's changed slot and the other side's would make a save the game may reject.
 
-Syncs happen when a game starts or stops in Nativ, when the Vita comes back onto the network, and on **Sync now**.
+Syncs happen when a game starts or stops in Nativ, when the Vita comes back onto the network, and on **Sync now**. So
+the usual case, playing on the PC and then picking up the Vita, needs nothing from the player: the PC's save reached the
+Vita when the game stopped in Nativ, or when the Vita woke on the network.
+
+## Starting a game on the Vita
+
+Players start games from the home screen, not through Nativ Sync. The background service watches launches (to be proven
+on 3.65: it means catching the shell's launch request). A game with a sync in progress, a copy from the PC waiting, or an
+open conflict opens Nativ Sync first, on that game: "Syncing Shovel Knight..." for a moment and then the game, or the
+conflict choice (Keep the Vita's, Use the PC's, Play without syncing) and then the game. Any other game starts at once,
+with no delay, including when the PC can't be reached.
+
+Playing on the Vita away from the PC after playing on the PC can't be caught: the Vita doesn't know what the PC did, so it
+plays its own save, and the conflict appears at the next connection.
 
 ## Conflicts
 
@@ -54,9 +67,10 @@ Either side can settle it, and the first choice wins:
 
 - **The launcher** asks when Play is pressed on a conflicted game, before the game starts. Decide later plays the PC's
   save and leaves the conflict open.
-- **The Vita app** lists the game under **Needs a choice**. The Vita can't stop a game from starting, so starting it there
-  plays the Vita's save and leaves the conflict open. A choice made on the Vita while the PC is away is kept and carried
-  out at the next connection.
+- **The Vita app** lists the game under **Needs a choice**. A choice made on the Vita while the PC is away is kept and
+  carried out at the next connection.
+- **Starting the game on the Vita** brings the choice up too, through the launch guard below. A conflict found while the
+  Vita is idle also raises a system notification ("Shovel Knight: progress on both your Vita and PC").
 
 The Vita learns what the PC has at each connection, so its view of a conflict is as of the last contact, and says so.
 
