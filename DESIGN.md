@@ -96,9 +96,11 @@ The Vita learns what the PC has at each connection, so its view of a conflict is
 
 A game updated on the Vita may save in a format its older version can't read: Shovel Knight on the Vita (patched) writes
 save version 8, Nativ's 1.00 writes version 5. Each side reports the game's installed version (`ux0:patch/<ID>` first,
-then `ux0:app/<ID>`, on the Vita). When they differ, nothing is copied and the game shows **Version differs** with both
-versions. The fix is on the player's side: the same update in Nativ (its packs take updates), or the same version on the
-Vita.
+then `ux0:app/<ID>`, on the Vita). A save goes to the same version or a newer one, never an older one: an update reads
+the saves made before it. So with an update on one side only, saves move from the older side to the updated one, and a
+save the updated side has played since stays there: the game shows why (made with which version, and which update
+would let it through), and a conflict's choice that would send a save to the older version is refused. A version
+neither side can read as one (`unknown`) still stops the sync.
 
 ## Save origin
 
@@ -130,7 +132,7 @@ Touch and buttons both work. The look follows Nativ's launcher: a dark ground wi
 
 1. **First run**: what it does in two lines, one **Install** button, and the note that it needs one restart.
 2. **Home**: a status line ("Running · paired with Desk PC · synced 2 min ago"), then each game with its icon, its name
-   and its state: Needs a choice, Newer on Vita, Newer on PC, In sync, Version differs, Off. Games needing a choice are
+   and its state: Needs a choice, Newer on Vita, Newer on PC, In sync, Made with a newer version, Off. Games needing a choice are
    listed first.
 3. **A game**: its recent syncs, sync on or off for it, **Sync now**, the conflict choice when there is one, and **Restore
    a backup** (by date).
