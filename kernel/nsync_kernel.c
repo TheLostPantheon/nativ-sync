@@ -1,5 +1,7 @@
-/* nsync_kernel: Nativ Sync's kernel module. One job: mount a game's save decrypted for the calling process, the way
- * VitaShell and Vita Save Manager do. The Vita's own file system driver then decrypts what the process reads through the
+/* nsync_kernel: Nativ Sync's kernel module. Two jobs: mounting a game's save decrypted for the calling process (here),
+ * and the launch guard (guard.c).
+ *
+ * The mount works the way VitaShell and Vita Save Manager do it. The Vita's own file system driver then decrypts what the process reads through the
  * save's ordinary path (ux0:user/00/savedata/<TITLEID>/...) and re-encrypts what it writes, with the console's own key:
  * nothing here touches a key.
  *
@@ -82,6 +84,7 @@ int nsyncFirmware(char *name) {   /* 1 and the firmware's name (e.g. "3.65") whe
 	return fw != 0;
 }
 
+int guard_start(void); void guard_stop(void);
 void _start() __attribute__ ((weak, alias("module_start")));
-int module_start(SceSize args, void *argp) { return SCE_KERNEL_START_SUCCESS; }
-int module_stop(SceSize args, void *argp) { return SCE_KERNEL_STOP_SUCCESS; }
+int module_start(SceSize args, void *argp) { guard_start(); return SCE_KERNEL_START_SUCCESS; }   /* (the mount works without it) */
+int module_stop(SceSize args, void *argp) { guard_stop(); return SCE_KERNEL_STOP_SUCCESS; }

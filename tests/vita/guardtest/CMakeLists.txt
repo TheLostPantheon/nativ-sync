@@ -1,0 +1,8 @@
+# guardtest.suprx: a stand-in service for trying the launch guard on a Vita (tests/vita/README.md)
+add_executable(guardtest guardtest.c)
+add_dependencies(guardtest nsync_kernel_stubs)
+target_include_directories(guardtest PRIVATE ${CMAKE_SOURCE_DIR}/kernel)
+target_link_directories(guardtest PRIVATE ${CMAKE_BINARY_DIR}/kernel/nsync_kernel_stubs)
+set_target_properties(guardtest PROPERTIES COMPILE_FLAGS "-Wl,-q -Wall -O2 -std=gnu99" LINK_FLAGS "-nostdlib")
+target_link_libraries(guardtest SceLibKernel_stub SceKernelThreadMgr_stub SceIofilemgr_stub NativSyncKernel_stub gcc)
+vita_create_self(guardtest.suprx guardtest CONFIG ${CMAKE_CURRENT_SOURCE_DIR}/exports.yml UNSAFE)

@@ -10,6 +10,7 @@ set(VITA_VERSION "00.01")
 
 add_subdirectory(kernel)
 add_subdirectory(user)
+add_subdirectory(tests/vita/guardtest)
 
 add_executable(nativ_sync app/main.c)
 add_dependencies(nativ_sync nsync_user_stubs)

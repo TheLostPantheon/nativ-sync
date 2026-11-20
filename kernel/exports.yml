@@ -12,3 +12,8 @@ NativSyncKernel:
       functions:
         - nsyncMountSave
         - nsyncFirmware
+        - nsyncGuardSet
+        - nsyncGuardClear
+        - nsyncGuardPcOnline
+        - nsyncGuardWait
+        - nsyncGuardRelease

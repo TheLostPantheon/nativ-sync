@@ -3,8 +3,9 @@
 The PlayStation Vita side of [Project Nativ](https://github.com/TheLostPantheon/nativ)'s save sync: play a game on your
 Vita, carry on in Nativ on your computer, and back again.
 
-**Status: in development.** Today the app is a read-only check: it shows whether your firmware is supported and, for a
-game you pick, the save's files as the game sees them. Nothing is written to a save yet.
+**Status: in development.** The kernel module mounts saves and guards launches (the conflict choice over a game's
+splash, holding a launch while a sync finishes), checked on a 3.65 Vita. The app is still a read-only check of the
+mount; the background service and Nativ's side come next.
 
 ## How it works
 
