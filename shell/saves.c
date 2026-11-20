@@ -17,7 +17,7 @@
 #define SLOT_FILE "sce_sys/sdslot.dat"
 #define KEEP_BACKUPS 10
 
-typedef struct { char path[PATHLEN]; uint32_t size; uint8_t hash[32]; } Entry;
+typedef struct { char path[PATHLEN]; uint32_t size; uint8_t hash[32]; char mtime[18]; } Entry;   /* mtime: the Vita's local time */
 typedef struct { int n, nslots; Entry e[MAX_FILES]; struct { int slot; uint8_t hash[32]; } s[SLOTS]; } Listing;
 
 static Listing want, have;               /* (one request at a time: the service serializes them) */
@@ -99,6 +99,11 @@ static void rm_tree(const char *abs) {   /* a folder and everything in it */
 	sceIoRmdir(abs);
 }
 
+static void local_time(const SceDateTime *utc, char *out, int cap) {   /* (file times are UTC) */
+	SceRtcTick t, l; SceDateTime d = *utc;
+	if (sceRtcGetTick(utc, &t) >= 0 && sceRtcConvertUtcToLocalTime(&t, &l) >= 0) sceRtcSetTick(&d, &l);
+	sceClibSnprintf(out, cap, "%04d-%02d-%02d %02d:%02d", d.year, d.month, d.day, d.hour, d.minute);
+}
 /* every file under root (but sce_sys and sce_pfs at the top), sorted by path in byte order; hashed if asked */
 static char stack[12][PATHLEN];
 static int walk(const char *root, Listing *L, int hash) {
@@ -117,7 +122,7 @@ static int walk(const char *root, Listing *L, int hash) {
 			if (len_(r2) >= PATHLEN - 1) { sceIoDclose(d); return -2; }
 			if (SCE_S_ISDIR(e.d_stat.st_mode)) { if (sp >= 12) { sceIoDclose(d); return -3; } cpy(stack[sp++], r2, PATHLEN); continue; }
 			if (L->n >= MAX_FILES) { sceIoDclose(d); return -4; }
-			Entry *x = &L->e[L->n++]; cpy(x->path, r2, PATHLEN); x->size = (uint32_t)e.d_stat.st_size;
+			Entry *x = &L->e[L->n++]; cpy(x->path, r2, PATHLEN); x->size = (uint32_t)e.d_stat.st_size; local_time(&e.d_stat.st_mtime, x->mtime, sizeof x->mtime);
 			if (hash) {
 				sceClibSnprintf(abs, sizeof abs, "%s/%s", root, r2);
 				int r = hash_file(abs, x->hash, &x->size);
@@ -201,7 +206,7 @@ int save_manifest(const char *id, char *out, int cap) {
 	for (int i = 0; i < have.n; i++) {
 		nsync_hex(hex, have.e[i].hash, 32);
 		svc_cat(out, cap, &len, "%s{\"path\":", i ? "," : ""); svc_jstr(out, cap, &len, have.e[i].path);
-		svc_cat(out, cap, &len, ",\"size\":%u,\"hash\":\"%s\"}", have.e[i].size, hex);
+		svc_cat(out, cap, &len, ",\"size\":%u,\"hash\":\"%s\",\"mtime\":\"%s\"}", have.e[i].size, hex, have.e[i].mtime);
 	}
 	svc_cat(out, cap, &len, "],\"slots\":[");
 	for (int i = 0; i < have.nslots; i++) {
@@ -514,8 +519,9 @@ static void add_ids(const char *dir) {
 	}
 	sceIoDclose(d);
 }
-int saves_list(char *out, int cap, const char *pc_id) {
-	nids = 0; add_ids(SAVES); add_ids("ux0:app");
+int saves_list(char *out, int cap, const char *pc_id, const char *only) {
+	nids = 0;
+	if (only && only[0]) { if (svc_valid_id(only)) cpy(ids[nids++], only, 12); } else { add_ids(SAVES); add_ids("ux0:app"); }
 	int len = 0;
 	svc_cat(out, cap, &len, "{\"games\":[");
 	for (int i = 0; i < nids; i++) {

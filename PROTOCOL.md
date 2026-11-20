@@ -75,8 +75,8 @@ the empty text.
 | Request | Reply |
 |---|---|
 | `HELLO <pc name>` | `{"protocol":1, "console":…, "firmware":"3.65", "account_id":<16 hex>, "running":[<title ids>], "free_kb":…}` |
-| `LIST` | `{"games":[{"id", "name", "version", "save":true/false, "base":<hash or null>, "guard":"none"/"sync"/"conflict"}]}`: every game with a save or installed |
-| `MANIFEST <id>` | `{"hash", "files":[{"path", "size", "hash"}], "slots":[{"slot", "hash", "title", "subtitle", "detail", "time"}]}` |
+| `LIST [<id>]` | `{"games":[{"id", "name", "version", "save":true/false, "base":<hash or null>, "guard":"none"/"sync"/"conflict"}]}`: every game with a save or installed, or just that one |
+| `MANIFEST <id>` | `{"hash", "files":[{"path", "size", "hash", "mtime"}], "slots":[{"slot", "hash", "title", "subtitle", "detail", "time"}]}`; times are the Vita's local time, `YYYY-MM-DD HH:MM` |
 | `GET <id> <path> <offset> <length>` | `OK\n` and the bytes (at most 128 KiB less that); `slot/<n>` is slot n's parameter |
 | `PUT <id> <path> <offset> <total>` + bytes | `OK`: into the staging folder for that game; nothing is applied yet |
 | `COMMIT <id> <hash>` + the manifest's canonical text | the text must hash to `<hash>`. Each file and slot in it comes from the staging folder, or must already be on the Vita as it is; files and slots missing from it are removed. The save is backed up first, everything is read back and checked after, and any failure puts the backup back. On success the manifest becomes the base: `{"backup":<name>}` |

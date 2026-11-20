@@ -272,7 +272,7 @@ static int handle(Conn *c, uint8_t *msg, int n) {
 	sceKernelLockMutex(cmd_lock, 1, NULL);
 	int r = 0;
 	if (!sceClibStrcmp(cmd, "HELLO")) { while (*s == ' ') s++; r = cmd_hello(c, s); goto out; }
-	if (!sceClibStrcmp(cmd, "LIST")) { int len = saves_list((char *)plain_out + 3, NSYNC_PLAIN_MAX - 3, c->pc_id); r = reply_payload(c, plain_out + 3, len); goto out; }
+	if (!sceClibStrcmp(cmd, "LIST")) { char only[12]; arg(&s, only, sizeof only); int len = saves_list((char *)plain_out + 3, NSYNC_PLAIN_MAX - 3, c->pc_id, only); r = reply_payload(c, plain_out + 3, len); goto out; }
 	arg(&s, id, sizeof id);
 	if (!svc_valid_id(id)) { r = reply_err(c, "not a title id"); goto out; }
 	if (!sceClibStrcmp(cmd, "MANIFEST")) {

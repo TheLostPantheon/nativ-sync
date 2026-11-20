@@ -18,7 +18,7 @@ const char *svc_guard_name(const char *id);   /* "none", "sync", "conflict": wha
 
 /* ---- saves.c (each call mounts and unmounts the save itself; the caller holds the sync guard around it) ---- */
 #define SAVE_BUSY  0x80F10101   /* (as errors to report: these come with a reason in *why) */
-int saves_list(char *out, int cap, const char *pc_id);   /* LIST's JSON; returns its length */
+int saves_list(char *out, int cap, const char *pc_id, const char *only);   /* LIST's JSON (only: one title, or all); its length */
 int save_manifest(const char *id, char *out, int cap);    /* MANIFEST's JSON (length), or < 0 */
 int save_get(const char *id, const char *path, uint32_t off, uint32_t len, uint8_t *out);   /* bytes read, or < 0 */
 int save_put(const char *id, const char *path, uint32_t off, uint32_t total, const uint8_t *data, uint32_t n);
