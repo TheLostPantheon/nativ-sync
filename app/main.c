@@ -158,6 +158,14 @@ static void load_games(void) {
 	sort_games();
 }
 static void refresh(void) { load_pcs(); load_games(); load_status(); sort_games(); service_alive = kernel_ok ? nsyncUserServiceAlive() : 0; }
+static int sel;
+static void update(void) {   /* every couple of seconds on the home screen: new states, the order they give, the cursor kept on its game */
+	char cur[12] = ""; if (sel < ngames) strcpy(cur, games[sel].id);
+	for (int i = 0; i < ngames; i++) last_sync(&games[i]);
+	load_status(); sort_games();
+	for (int i = 0; i < ngames; i++) if (!strcmp(games[i].id, cur)) sel = i;
+	service_alive = kernel_ok ? nsyncUserServiceAlive() : 0;
+}
 
 /* ---- installing: the two lines in the active taiHEN config ---- */
 static const char *config_path(void) { return exists("ux0:tai/config.txt") ? "ux0:tai/config.txt" : "ur0:tai/config.txt"; }
@@ -221,7 +229,7 @@ static int do_remove(void) {
 
 /* ---- the screens ---- */
 enum { HOME, PAIR, SETTINGS };
-static int screen = HOME, sel, scroll, settings_sel;
+static int screen = HOME, scroll, settings_sel;
 static char code[8]; static char pair_before[8][17]; static int pair_nbefore, paired_now; static SceInt64 pair_t0;
 static void open_pairing(void) {
 	unsigned r; sceKernelGetRandomNumber(&r, sizeof r);
@@ -353,7 +361,7 @@ int main(void) {
 		sceCtrlPeekBufferPositive(0, &pad, 1);
 		unsigned press = pad.buttons & ~old.buttons; old = pad;
 		if (++frame % 120 == 0) {
-			if (screen == HOME) { load_status(); service_alive = kernel_ok ? nsyncUserServiceAlive() : 0; }
+			if (screen == HOME) update();
 			if (screen == PAIR && paired_now < 0) {   /* the computer whose id is new (folder order isn't pairing order) */
 				load_pcs();
 				for (int i = 0; i < npcs && paired_now < 0; i++) { int old = 0; for (int j = 0; j < pair_nbefore; j++) if (!strcmp(pcs[i].id, pair_before[j])) old = 1; if (!old) paired_now = i; }
