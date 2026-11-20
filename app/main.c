@@ -12,7 +12,7 @@
 #include <vita2d.h>
 #include <stdio.h>
 #include <string.h>
-#include "../kernel/nsync_kernel.h"
+#include "../user/nsync_user.h"
 
 #define MAXSAVES 256
 static char saves[MAXSAVES][12]; static int nsaves;
@@ -31,7 +31,7 @@ static void list_saves(void) {
 }
 static void check(const char *self, const char *t) {   /* the save's own files (not its sce_sys / sce_pfs) through the mount */
 	char mp[16], path[64]; memset(mp, 0, sizeof mp); nlines = 0;
-	int r = nsyncMountSave(t, self, mp);
+	int r = nsyncUserMountSave(t, self, mp);
 	say("%s: mount 0x%08X", t, r);
 	if (r < 0) return;
 	snprintf(path, sizeof path, "ux0:user/00/savedata/%s", t);
@@ -41,11 +41,17 @@ static void check(const char *self, const char *t) {   /* the save's own files (
 	say("unmount%s 0x%08X", "", sceAppMgrUmount(mp));
 }
 int main(void) {
-	char self[16] = "", fw[8] = "";
-	int km = taiLoadStartKernelModule("app0:nsync_kernel.skprx", 0, NULL, 0);   /* (before app0 goes) */
+	char self[16] = "", fw[8] = "", kpath[64];
 	sceAppMgrAppParamGetString(0, 12, self, sizeof self);
+	/* from the installed folder, not app0: (a process's own mount, which kernel code can't see: 0x80010013) */
+	snprintf(kpath, sizeof kpath, "ux0:app/%s/nsync_kernel.skprx", self);
+	int km = taiLoadStartKernelModule(kpath, 0, NULL, 0);
+	/* then the bridge, which binds to it now (nsync_user.c says why the app can't call the kernel module itself) */
+	snprintf(kpath, sizeof kpath, "ux0:app/%s/nsync_user.suprx", self);
+	int um = sceKernelLoadStartModule(kpath, 0, NULL, 0, NULL, NULL);
+	if (um < 0 && km >= 0) km = um;
 	sceAppMgrUmount("app0:"); sceAppMgrUmount("savedata0:");   /* as Vita Save Manager does: this app's own mounts out of the way */
-	int supported = km >= 0 || km == (int)0x8002D013 ? nsyncFirmware(fw) : 0;   /* (0x8002D013: loaded already) */
+	int supported = km >= 0 || km == (int)0x8002D013 ? nsyncUserFirmware(fw) : 0;   /* (0x8002D013: loaded already) */
 	list_saves();
 	vita2d_init(); vita2d_set_clear_color(RGBA8(0x12, 0x14, 0x19, 0xFF));
 	vita2d_pgf *font = vita2d_load_default_pgf();

@@ -1,0 +1,7 @@
+add_executable(nsync_user nsync_user.c)
+add_dependencies(nsync_user nsync_kernel_stubs)
+target_link_directories(nsync_user PRIVATE ${CMAKE_BINARY_DIR}/kernel/nsync_kernel_stubs)
+set_target_properties(nsync_user PROPERTIES COMPILE_FLAGS "-Wl,-q -Wall -O2 -std=gnu99" LINK_FLAGS "-nostdlib")
+target_link_libraries(nsync_user NativSyncKernel_stub)
+vita_create_self(nsync_user.suprx nsync_user CONFIG ${CMAKE_CURRENT_SOURCE_DIR}/exports.yml UNSAFE)
+vita_create_stubs(nsync_user_stubs nsync_user ${CMAKE_CURRENT_SOURCE_DIR}/exports.yml)

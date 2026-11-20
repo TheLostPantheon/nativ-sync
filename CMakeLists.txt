@@ -9,14 +9,16 @@ set(VITA_TITLEID "NSYN00001")   # (provisional: checked against VitaDB before a 
 set(VITA_VERSION "00.01")
 
 add_subdirectory(kernel)
+add_subdirectory(user)
 
 add_executable(nativ_sync app/main.c)
-add_dependencies(nativ_sync nsync_kernel_stubs)
-target_link_directories(nativ_sync PRIVATE ${CMAKE_BINARY_DIR}/kernel/nsync_kernel_stubs)
+add_dependencies(nativ_sync nsync_user_stubs)
+target_link_directories(nativ_sync PRIVATE ${CMAKE_BINARY_DIR}/user/nsync_user_stubs)
 target_compile_options(nativ_sync PRIVATE -Wall -O2)
-target_link_libraries(nativ_sync NativSyncKernel_stub taihen_stub vita2d SceDisplay_stub SceGxm_stub SceSysmodule_stub SceCtrl_stub
+target_link_libraries(nativ_sync NativSyncUser_stub_weak taihen_stub vita2d SceDisplay_stub SceGxm_stub SceSysmodule_stub SceCtrl_stub
   ScePgf_stub ScePvf_stub SceCommonDialog_stub SceAppMgr_stub SceAppUtil_stub freetype png jpeg z m c)
 vita_create_self(eboot.bin nativ_sync UNSAFE)
 vita_create_vpk(nativ_sync.vpk ${VITA_TITLEID} eboot.bin VERSION ${VITA_VERSION} NAME ${VITA_APP_NAME}
-  FILE ${CMAKE_BINARY_DIR}/kernel/nsync_kernel.skprx nsync_kernel.skprx)
-add_dependencies(nativ_sync.vpk-vpk nsync_kernel.skprx-self)   # (the module goes in the vpk: made first)
+  FILE ${CMAKE_BINARY_DIR}/kernel/nsync_kernel.skprx nsync_kernel.skprx
+  FILE ${CMAKE_BINARY_DIR}/user/nsync_user.suprx nsync_user.suprx)
+add_dependencies(nativ_sync.vpk-vpk nsync_kernel.skprx-self nsync_user.suprx-self)   # (the modules go in the vpk: made first)
