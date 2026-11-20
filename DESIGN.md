@@ -136,6 +136,11 @@ Touch and buttons both work. The look follows Nativ's launcher: a dark ground wi
    a backup** (by date).
 4. **Settings**: pair or unpair, uninstall, firmware and app version, and the log for bug reports.
 
+Install puts three files beside the active taiHEN config (`ur0:tai/nativ-sync/`, or `ux0:tai`'s when that config is the
+one taiHEN reads): the kernel module under `*KERNEL`, and under `*main` a small loader, not the service itself.
+taiHEN loads `*main` plugins as the shell starts, before the shell has its network libraries, and the service (which
+imports them) can't load then; the loader imports only what is always there and loads the service a moment later.
+
 Names come from each game's `sce_sys/param.sfo` under `ux0:app`, which is readable as it is; icons from the home
 screen's copies in `ur0:appmeta/<ID>/icon0.png`. A save whose game was deleted takes its name from the save's own
 `param.sfo`, read through the mount.

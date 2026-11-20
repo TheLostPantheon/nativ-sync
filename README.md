@@ -3,10 +3,9 @@
 The PlayStation Vita side of [Project Nativ](https://github.com/TheLostPantheon/nativ)'s save sync: play a game on your
 Vita, carry on in Nativ on your computer, and back again.
 
-**Status: in development.** Checked on a 3.65 Vita: the kernel module (mounting saves, guarding launches), the
-background service (finding, pairing, the encrypted protocol, pulls, commits with backups, the conflict choice at
-launch), and Nativ's side (merged into Nativ: Settings, Vita sync). The app now installs the service, pairs and shows
-each game's state; its first run on a Vita is next.
+**Status: in development.** Running on a 3.65 Vita: the app installs the service (taiHEN config backed up first), the
+service starts with the Vita, pairing works from the app's code screen, and Nativ (merged: Settings, Vita sync) syncs
+with it, including the conflict choice at launch on either side.
 
 ## How it works
 

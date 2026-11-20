@@ -23,5 +23,6 @@ vita_create_self(eboot.bin nativ_sync UNSAFE)
 vita_create_vpk(nativ_sync.vpk ${VITA_TITLEID} eboot.bin VERSION ${VITA_VERSION} NAME ${VITA_APP_NAME}
   FILE ${CMAKE_BINARY_DIR}/kernel/nsync_kernel.skprx nsync_kernel.skprx
   FILE ${CMAKE_BINARY_DIR}/user/nsync_user.suprx nsync_user.suprx
-  FILE ${CMAKE_BINARY_DIR}/shell/nsync_service.suprx nsync_service.suprx)
-add_dependencies(nativ_sync.vpk-vpk nsync_kernel.skprx-self nsync_user.suprx-self nsync_service.suprx-self)   # (the modules go in the vpk: made first)
+  FILE ${CMAKE_BINARY_DIR}/shell/nsync_service.suprx nsync_service.suprx
+  FILE ${CMAKE_BINARY_DIR}/shell/nsync_boot.suprx nsync_boot.suprx)
+add_dependencies(nativ_sync.vpk-vpk nsync_kernel.skprx-self nsync_user.suprx-self nsync_service.suprx-self nsync_boot.suprx-self)   # (the modules go in the vpk: made first)

@@ -30,6 +30,10 @@ static const unsigned BG = RGBA(18, 20, 25), CARD = RGBA(28, 31, 39), CARD_HI = 
 	DIM = RGBA(144, 151, 163), FAINT = RGBA(96, 102, 116), AMBER = RGBA(240, 180, 76), GOOD = RGBA(88, 194, 139), WARN = RGBA(232, 163, 61);
 
 static vita2d_pgf *font;
+static void trace(const char *fmt, int v) {   /* (start-up steps into DATA/app.log: where a crash at start happened) */
+	char l[128]; int n = snprintf(l, sizeof l, fmt, v); l[n++] = '\n';
+	SceUID f = sceIoOpen("ux0:data/nativ-sync/app.log", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0666); if (f >= 0) { sceIoWrite(f, l, n); sceIoClose(f); }
+}
 static char self_id[16], fw[8];
 static int kernel_ok, has_firmware;
 
@@ -90,7 +94,7 @@ static void sfo_title(const char *id, char *out, int cap) {
 typedef struct { char id[17], name[64]; } Pc;
 static Pc pcs[8]; static int npcs;
 static char online_pc[17];
-typedef struct { char id[12], name[96], when[32]; int conflict; vita2d_texture *icon; int icon_tried; } Game;
+typedef struct { char id[12], name[96], when[32]; long long when_stamp; int conflict; vita2d_texture *icon; int icon_tried; } Game;
 static Game games[200]; static int ngames;
 static int service_alive;
 
@@ -125,7 +129,17 @@ static void last_sync(Game *g) {   /* the newest base any paired computer record
 		if (sceIoGetstat(p, &st) >= 0 && stamp_of(&st.st_mtime) > stamp_of(&best)) best = st.st_mtime;
 	}
 	static const char *const months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+	g->when_stamp = best.year ? stamp_of(&best) : 0;
 	if (best.year) snprintf(g->when, sizeof g->when, "Synced %d %s", best.day, months[(best.month + 11) % 12]);   /* (a UTC date: near enough for a list) */
+}
+static int game_before(const Game *a, const Game *b) {   /* needs a choice, then synced (newest first), then the rest by name */
+	int ra = a->conflict ? 0 : a->when_stamp ? 1 : 2, rb = b->conflict ? 0 : b->when_stamp ? 1 : 2;
+	if (ra != rb) return ra < rb;
+	if (ra == 1 && a->when_stamp != b->when_stamp) return a->when_stamp > b->when_stamp;
+	return strcasecmp(a->name, b->name) < 0;
+}
+static void sort_games(void) {
+	for (int i = 1; i < ngames; i++) for (int j = i; j > 0 && game_before(&games[j], &games[j - 1]); j--) { Game t = games[j]; games[j] = games[j - 1]; games[j - 1] = t; }
 }
 static void load_games(void) {
 	for (int i = 0; i < ngames; i++) if (games[i].icon) vita2d_free_texture(games[i].icon);
@@ -140,17 +154,17 @@ static void load_games(void) {
 		ngames++;
 	}
 	sceIoDclose(d);
-	for (int i = 1; i < ngames; i++) for (int j = i; j > 0 && strcasecmp(games[j - 1].name, games[j].name) > 0; j--) { Game t = games[j]; games[j] = games[j - 1]; games[j - 1] = t; }
 	for (int i = 0; i < ngames; i++) last_sync(&games[i]);
+	sort_games();
 }
-static void refresh(void) { load_pcs(); load_games(); load_status(); service_alive = kernel_ok ? nsyncUserServiceAlive() : 0; }
+static void refresh(void) { load_pcs(); load_games(); load_status(); sort_games(); service_alive = kernel_ok ? nsyncUserServiceAlive() : 0; }
 
 /* ---- installing: the two lines in the active taiHEN config ---- */
 static const char *config_path(void) { return exists("ux0:tai/config.txt") ? "ux0:tai/config.txt" : "ur0:tai/config.txt"; }
 static void plugin_dir(char *out, int cap) { snprintf(out, cap, "%s/nativ-sync", !strcmp(config_path(), "ux0:tai/config.txt") ? "ux0:tai" : "ur0:tai"); }
 static int installed(void) {
 	static char c[16384]; if (read_file(config_path(), c, sizeof c) <= 0) return 0;
-	return strstr(c, "nativ-sync/nsync_kernel.skprx") && strstr(c, "nativ-sync/nsync_service.suprx");
+	return strstr(c, "nativ-sync/nsync_kernel.skprx") && strstr(c, "nativ-sync/nsync_boot.suprx");
 }
 /* the config with a line added under a section (*KERNEL, *main), the section made at the end when it has none */
 static int add_line(char *c, int cap, const char *section, const char *line) {
@@ -174,16 +188,17 @@ static int remove_lines(char *c, const char *needle) {   /* every line holding n
 }
 static char install_msg[200];
 static int do_install(void) {
-	static char c[16384]; char dir[64], k[96], s[96], src[96], bak[96];
+	static char c[16384]; char dir[64], k[96], s[96], b[96], src[96], bak[96];
 	const char *cfg = config_path();
 	if (read_file(cfg, c, sizeof c - 512) < 0) { snprintf(install_msg, sizeof install_msg, "No taiHEN config at %s.", cfg); return -1; }
 	plugin_dir(dir, sizeof dir); sceIoMkdir(dir, 0777);
-	snprintf(k, sizeof k, "%s/nsync_kernel.skprx", dir); snprintf(s, sizeof s, "%s/nsync_service.suprx", dir);
+	snprintf(k, sizeof k, "%s/nsync_kernel.skprx", dir); snprintf(s, sizeof s, "%s/nsync_service.suprx", dir); snprintf(b, sizeof b, "%s/nsync_boot.suprx", dir);
 	snprintf(src, sizeof src, "ux0:app/%s/nsync_kernel.skprx", self_id); if (copy_file(src, k) < 0) { snprintf(install_msg, sizeof install_msg, "Couldn't copy the kernel module."); return -1; }
 	snprintf(src, sizeof src, "ux0:app/%s/nsync_service.suprx", self_id); if (copy_file(src, s) < 0) { snprintf(install_msg, sizeof install_msg, "Couldn't copy the service."); return -1; }
+	snprintf(src, sizeof src, "ux0:app/%s/nsync_boot.suprx", self_id); if (copy_file(src, b) < 0) { snprintf(install_msg, sizeof install_msg, "Couldn't copy the service's loader."); return -1; }
 	snprintf(bak, sizeof bak, "%s.nativ-sync-backup", cfg); write_file(bak, c, (int)strlen(c));
 	remove_lines(c, "nativ-sync/nsync_");   /* (an earlier install's lines: once each) */
-	if (add_line(c, sizeof c, "*KERNEL", k) < 0 || add_line(c, sizeof c, "*main", s) < 0) { snprintf(install_msg, sizeof install_msg, "The config is too big to change safely."); return -1; }
+	if (add_line(c, sizeof c, "*KERNEL", k) < 0 || add_line(c, sizeof c, "*main", b) < 0)   /* (the loader: the service can't load that early) */ { snprintf(install_msg, sizeof install_msg, "The config is too big to change safely."); return -1; }
 	if (write_file(cfg, c, (int)strlen(c)) < 0) { snprintf(install_msg, sizeof install_msg, "Couldn't write %s (the backup is beside it).", cfg); return -1; }
 	snprintf(install_msg, sizeof install_msg, "Installed. Restart your Vita to start it (the old config is %s).", bak);
 	return 0;
@@ -197,6 +212,7 @@ static int do_remove(void) {
 	if (write_file(cfg, c, (int)strlen(c)) < 0) { snprintf(install_msg, sizeof install_msg, "Couldn't write %s.", cfg); return -1; }
 	plugin_dir(dir, sizeof dir);
 	snprintf(p, sizeof p, "%s/nsync_service.suprx", dir); sceIoRemove(p);
+	snprintf(p, sizeof p, "%s/nsync_boot.suprx", dir); sceIoRemove(p);
 	snprintf(p, sizeof p, "%s/nsync_kernel.skprx", dir); sceIoRemove(p);
 	sceIoRmdir(dir);
 	snprintf(install_msg, sizeof install_msg, "Removed. It stops at the next restart; your pairings and backups stay in %s.", DATA);
@@ -206,19 +222,24 @@ static int do_remove(void) {
 /* ---- the screens ---- */
 enum { HOME, PAIR, SETTINGS };
 static int screen = HOME, sel, scroll, settings_sel;
-static char code[8]; static int pair_npcs_before, paired_now; static SceInt64 pair_t0;
+static char code[8]; static char pair_before[8][17]; static int pair_nbefore, paired_now; static SceInt64 pair_t0;
 static void open_pairing(void) {
 	unsigned r; sceKernelGetRandomNumber(&r, sizeof r);
 	snprintf(code, sizeof code, "%06u", r % 1000000);
 	sceIoMkdir(DATA, 0777); write_file(DATA "/pairing.txt", code, 6);
-	load_pcs(); pair_npcs_before = npcs; paired_now = -1; pair_t0 = sceKernelGetProcessTimeWide();
+	load_pcs(); pair_nbefore = npcs; for (int i = 0; i < npcs; i++) strcpy(pair_before[i], pcs[i].id);
+	paired_now = -1; pair_t0 = sceKernelGetProcessTimeWide();
 	screen = PAIR;
 }
 static void close_pairing(void) { sceIoRemove(DATA "/pairing.txt"); screen = HOME; refresh(); }
 
+static void cross(int cx, int cy, unsigned c) {   /* (the system font has no cross glyph) */
+	for (int d = -1; d <= 1; d++) { vita2d_draw_line(cx - 5 + d, cy - 5, cx + 5 + d, cy + 5, c); vita2d_draw_line(cx - 5 + d, cy + 5, cx + 5 + d, cy - 5, c); }
+}
 static void button_hint(int x, int y, const char *glyph, unsigned gc, const char *label) {
 	vita2d_draw_fill_circle(x + 11, y - 7, 12, CARD_HI);
-	text(x + 11 - text_w(0.8f, glyph) / 2, y - 1, gc, 0.8f, glyph);
+	if (!strcmp(glyph, "\xE2\x9C\x95")) cross(x + 11, y - 7, gc);
+	else text(x + 11 - text_w(0.8f, glyph) / 2, y - 1, gc, 0.8f, glyph);
 	text(x + 30, y, INK, 0.9f, label);
 }
 static void draw_header(const char *title) {
@@ -292,7 +313,7 @@ static void draw_settings(void) {
 	                            : "The service starts with your Vita and syncs in the background. Installing adds two lines to your taiHEN config (backed up first) and takes effect at the next restart.", 880, 24);
 	y += 66;
 	for (int i = 0; i < n; i++) {
-		if (i == 1) { text(30, y + 22, DIM, 0.9f, "Paired computers (\xE2\x9C\x95 removes one):"); y += 34; }
+		if (i == 1) { text(30, y + 22, DIM, 0.9f, "Paired computers (Cross removes one):"); y += 34; }
 		vita2d_draw_rectangle(20, y, 920, 44, i == settings_sel ? CARD_HI : CARD);
 		text_fit(36, y + 30, i == 0 ? AMBER : INK, 1.0f, items[i], 860);
 		y += 50;
@@ -309,15 +330,23 @@ int main(void) {
 	sceAppMgrAppParamGetString(0, 12, self_id, sizeof self_id);
 	char kpath[96];
 	snprintf(kpath, sizeof kpath, "ux0:app/%s/nsync_kernel.skprx", self_id);   /* (not app0: the kernel can't see a process's own mount) */
+	sceIoRemove("ux0:data/nativ-sync/app.log"); sceIoMkdir("ux0:data/nativ-sync", 0777);
 	int km = taiLoadStartKernelModule(kpath, 0, NULL, 0);
+	trace("kernel module 0x%08X", km);
 	snprintf(kpath, sizeof kpath, "ux0:app/%s/nsync_user.suprx", self_id);   /* the bridge, bound to it now (nsync_user.c) */
 	int um = sceKernelLoadStartModule(kpath, 0, NULL, 0, NULL, NULL);
+	trace("bridge 0x%08X", um);
 	kernel_ok = (km >= 0 || km == (int)0x8002D013) && um >= 0;
 	has_firmware = kernel_ok && nsyncUserFirmware(fw);
 	kernel_ok = kernel_ok && has_firmware;
+	trace("firmware known %d", has_firmware);
 	vita2d_init(); vita2d_set_clear_color(BG);
 	font = vita2d_load_default_pgf();
-	refresh();
+	trace("drawing ready %d", font != NULL);
+	load_pcs(); trace("computers %d", npcs);
+	load_games(); trace("games %d", ngames);
+	load_status(); trace("status read %d", 1);
+	service_alive = kernel_ok ? nsyncUserServiceAlive() : 0; trace("service alive %d", service_alive);
 	SceCtrlData pad, old; memset(&old, 0, sizeof old);
 	int frame = 0;
 	for (;;) {
@@ -325,7 +354,10 @@ int main(void) {
 		unsigned press = pad.buttons & ~old.buttons; old = pad;
 		if (++frame % 120 == 0) {
 			if (screen == HOME) { load_status(); service_alive = kernel_ok ? nsyncUserServiceAlive() : 0; }
-			if (screen == PAIR && paired_now < 0) { load_pcs(); if (npcs > pair_npcs_before) paired_now = npcs - 1; }
+			if (screen == PAIR && paired_now < 0) {   /* the computer whose id is new (folder order isn't pairing order) */
+				load_pcs();
+				for (int i = 0; i < npcs && paired_now < 0; i++) { int old = 0; for (int j = 0; j < pair_nbefore; j++) if (!strcmp(pcs[i].id, pair_before[j])) old = 1; if (!old) paired_now = i; }
+			}
 			if (screen == PAIR && paired_now < 0 && sceKernelGetProcessTimeWide() - pair_t0 > 300000000LL) sceIoRemove(DATA "/pairing.txt");
 		}
 		if (screen == HOME) {
@@ -351,6 +383,7 @@ int main(void) {
 			if ((press & SCE_CTRL_TRIANGLE) && strstr(install_msg, "Restart")) scePowerRequestColdReset();
 		}
 		vita2d_start_drawing(); vita2d_clear_screen();
+		if (frame == 1) trace("first frame %d", screen);
 		if (screen == HOME) draw_home(); else if (screen == PAIR) draw_pair(); else draw_settings();
 		vita2d_end_drawing(); vita2d_swap_buffers();
 	}
