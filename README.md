@@ -22,9 +22,9 @@ Planned shape:
 - **A small kernel module** with one job: mounting a save decrypted for the calling process. A firmware it doesn't
   know, it refuses.
 
-Syncing is decided on the computer: each side's files are compared with what was there at the last sync, so a save
-changed on one side is copied to the other, and a save changed on both is a question for you. Whatever is replaced is
-backed up first, on the side it's replaced on.
+Each side's save is compared with how it was at the last sync: a save changed on one side is copied to the other, and a
+save changed on both is a question for you, answered in the launcher or the app. Whatever is replaced is backed up
+first, on the side it's replaced on. DESIGN.md has the rules, the conflict choice and the screens.
 
 ## Supported firmware
 

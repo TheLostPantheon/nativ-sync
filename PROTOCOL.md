@@ -23,11 +23,16 @@ the pairing key; a reply is `OK <length>\n<payload>` or `ERR <reason>\n`. Replie
 | Command | What it does |
 |---|---|
 | `HELLO` | protocol version, firmware, free space, the app running in front (a game's title id, or none) |
-| `LIST` | the games with saves: title id, the save's last change, its param.sfo title and detail, the game's installed version |
-| `MANIFEST <title>` | the save's own files (not `sce_sys`, `sce_pfs`): path, size, SHA-256 |
-| `GET <title> <path>` | one file's plain bytes |
-| `PUT <title> <path> <length>` | one file into a staging area for that title (nothing is applied yet) |
-| `COMMIT <title> <manifest hash>` | back the save's current files up, apply the staged ones, read them back and check them against the manifest; on any failure the backup is restored |
+| `LIST` | the games with saves: title id, name, installed version, the save's last change, and its state as the Vita last knew it (DESIGN.md) |
+| `MANIFEST <title>` | the save as it is now: its own files (not `sce_sys`, `sce_pfs`) with size and SHA-256, its used slots with their texts, the manifest's own hash, and the base's hash |
+| `GET <title> <path>` | one file's plain bytes; `slot/<N>` is slot N's 0x34C-byte parameter (from `sdslot.dat`) |
+| `PUT <title> <path> <length>` | one file, or `slot/<N>`, into a staging area for that title (nothing is applied yet) |
+| `COMMIT <title> <manifest hash>` | back the save up, apply the staged files and slots, read them back and check them against the manifest; on any failure the backup is restored. The applied manifest becomes the base |
+| `BASE <title> <manifest hash>` | record the base after a sync that copied nothing to the Vita (the PC took the Vita's save, or both were equal) |
+| `STATE <title> <pc state> <summary>` | what the PC has since the base (unchanged, changed, its version and its slot texts), so the app can show a conflict while the PC is away |
+| `CHOICES` | conflict choices made in the app since the last connection (title, which side to keep); the launcher carries them out |
 | `BACKUPS <title>` / `RESTORE <title> <backup>` | the backups the Vita keeps, and putting one back |
+
+The Vita keeps one base per paired launcher, in `ux0:data/nativ-sync/state/`.
 
 A save is never read or written while its game is running (`HELLO`'s front app); such a request answers `ERR busy`.
