@@ -43,11 +43,19 @@ Vita when the game stopped in Nativ, or when the Vita woke on the network.
 
 ## Starting a game on the Vita
 
-Players start games from the home screen, not through Nativ Sync. The background service watches launches (to be proven
-on 3.65: it means catching the shell's launch request). A game with a sync in progress, a copy from the PC waiting, or an
-open conflict opens Nativ Sync first, on that game: "Syncing Shovel Knight..." for a moment and then the game, or the
-conflict choice (Keep the Vita's, Use the PC's, Play without syncing) and then the game. Any other game starts at once,
-with no delay, including when the PC can't be reached.
+Players start games from the home screen, not through Nativ Sync. The kernel module watches every app start: SceProcessmgr's
+ksceKernelCreateProcess (SceProcessmgrForKernel 0xEB1F8EF7, NID 0x68068618 from 3.63 on; 0x71CF71FD on 3.60), which gets
+the title id and the path being started (`ux0:/patch/<ID>/eboot.bin` for an updated game). Checked on 3.65: a home screen
+launch passes through it, and holding it there keeps the game's own start-up splash on screen, which is what the Vita
+shows while a game loads anyway (a 3-second hold looked like a slower start).
+
+So a game with a copy from the PC waiting syncs during that splash, with nothing extra on screen. A time limit (a few
+seconds) starts the game anyway if the PC stops answering, and the sync is left for the next connection.
+
+A game with an open conflict needs a choice before it starts, which the kernel can't show. The plan is to turn that
+launch into one of Nativ Sync with the game's id, which shows the choice (Keep the Vita's, Use the PC's, Play without
+syncing) and then starts the game itself, past the guard. How the shell takes a launch replaced this way is the next thing
+to try. Any other game starts as it would without Nativ Sync.
 
 Playing on the Vita away from the PC after playing on the PC can't be caught: the Vita doesn't know what the PC did, so it
 plays its own save, and the conflict appears at the next connection.
