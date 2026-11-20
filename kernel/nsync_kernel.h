@@ -50,3 +50,6 @@ int nsyncGuardWait(NsyncEvent *event, unsigned int timeout_us);
 /* the answer to a held launch: ok nonzero when its sync finished, else the game starts with the Vita's save after a
  * note on screen */
 int nsyncGuardRelease(const char *titleid, int ok);
+/* 1 and the title id (12 bytes) while a launch has passed the guard but its process isn't up yet: the moment a mount
+ * could race the game. The service checks it after setting a sync guard. */
+int nsyncGuardLaunching(char *titleid);

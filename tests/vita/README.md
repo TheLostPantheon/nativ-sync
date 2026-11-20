@@ -21,3 +21,17 @@ What each should do:
 | `sync ... 3000 0` | progress after a second, a note for 4 seconds, then the game |
 
 The screens themselves can be previewed on a computer: `tools/preview.c` (its comment has the command).
+
+## The service
+
+Load `nsync_kernel.skprx`, then `nsync_service.suprx` into SceShell. Pairing needs a code in
+`ux0:data/nativ-sync/pairing.txt` (the app writes it; by hand, any six digits), then from a computer on the same
+network:
+
+    tools/nsync_client.py find
+    tools/nsync_client.py pair <address> <code>
+    tools/nsync_client.py list <address>
+    tools/nsync_client.py pull <address> <TITLE ID> <folder>
+    tools/nsync_client.py push <address> <TITLE ID> <folder>
+
+The service logs to `ux0:data/nativ-sync/service.log`.

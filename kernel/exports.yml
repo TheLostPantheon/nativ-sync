@@ -17,3 +17,4 @@ NativSyncKernel:
         - nsyncGuardPcOnline
         - nsyncGuardWait
         - nsyncGuardRelease
+        - nsyncGuardLaunching

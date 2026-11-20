@@ -11,3 +11,14 @@ jobs:
         with:
           name: nativ_sync
           path: build/nativ_sync.vpk
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: protocol code
+        run: |
+          mkdir -p build
+          cc -O2 -Wall -Werror -Icommon -Ithird_party/monocypher tests/host/proto_test.c common/nsync_proto.c third_party/monocypher/monocypher.c -o build/proto_test
+          build/proto_test
+      - name: screens render
+        run: cc -O2 -Wall -Ikernel tools/preview.c kernel/draw.c kernel/screens.c kernel/font.c -o build/preview && (cd build && ./preview)

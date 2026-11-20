@@ -32,6 +32,7 @@ static SceUID lock = -1, events = -1;
 static int pc_online;
 static SceInt64 service_seen = -SERVICE_ALIVE_US;
 static volatile int released, release_ok; static char held[12];
+static char launching[12];   /* the title whose process is being created, past the guard */
 static tai_hook_ref_t hook_ref; static SceUID hook = -1;
 
 static SceInt64 now(void) { return ksceKernelGetSystemTimeWide(); }
@@ -89,9 +90,17 @@ static int ask(const NsyncGuardInfo *g, int pc_ok) {   /* the conflict choice; N
 
 /* wait for the service's nsyncGuardRelease of this launch: quietly at first, then with a progress screen; on failure or
  * no answer, a note and the game starts with the Vita's save */
-static void wait_release(const NsyncGuardInfo *g, const char *doing) {
+static int still_sync(const char *t) {   /* the title's guard is still a sync: the service lifts it when done */
+	int on = 0;
+	enter();
+	for (int i = 0; i < MAX_GUARDS; i++) if (guards[i].state == NSYNC_GUARD_SYNC && !strcmp(guards[i].titleid, t)) on = 1;
+	leave();
+	return on;
+}
+static void wait_release(const NsyncGuardInfo *g, const char *doing, int watch_sync) {
 	SceInt64 t0 = now(); int shown = 0;
 	while (!released && now() - t0 < SYNC_LIMIT_US) {
+		if (watch_sync && !still_sync(g->titleid)) { release_ok = 1; released = 1; break; }   /* (a release that came early) */
 		if (now() - t0 < SYNC_QUIET_US) { ksceKernelDelayThread(10000); continue; }
 		if (!shown && overlay_ready()) { screen_progress(&canvas, g->game[0] ? g->game : g->titleid, doing, 0); shown = 1; }
 		if (shown) show(); else ksceKernelDelayThread(10000);
@@ -122,13 +131,13 @@ static int guarded(Launch *l) {
 		if (cur.state == NSYNC_GUARD_SYNC && alive) {
 			post(NSYNC_EVENT_LAUNCH, t, 0, 0);
 			cat(doing, sizeof doing, "Syncing with ", cur.pc_name[0] ? cur.pc_name : "your PC", "\xE2\x80\xA6");
-			wait_release(&cur, doing);
+			wait_release(&cur, doing, 1);
 		} else if (cur.state == NSYNC_GUARD_CONFLICT) {
 			int choice = ask(&cur, alive && online);
 			post(NSYNC_EVENT_CHOICE, t, choice, 0);
 			if (choice == NSYNC_CHOICE_PC) {
 				cat(doing, sizeof doing, "Getting your save from ", cur.pc_name[0] ? cur.pc_name : "your PC", "\xE2\x80\xA6");
-				wait_release(&cur, doing);
+				wait_release(&cur, doing, 0);
 			}
 			if (choice == NSYNC_CHOICE_VITA || choice == NSYNC_CHOICE_PC) {   /* settled here: the service sets it again if need be */
 				enter();
@@ -138,7 +147,9 @@ static int guarded(Launch *l) {
 		}
 		held[0] = 0;
 	}
+	enter(); memcpy(launching, t, sizeof launching); leave();
 	SceUID r = TAI_CONTINUE(SceUID, hook_ref, l->titleid, l->type, l->path, l->opt);
+	enter(); launching[0] = 0; leave();
 	if (r >= 0) post(NSYNC_EVENT_STARTED, t, 0, r);
 	return r;
 }
@@ -199,6 +210,13 @@ int nsyncGuardWait(NsyncEvent *event, unsigned int timeout_us) {
 	}
 	EXIT_SYSCALL(st);
 	return res;
+}
+int nsyncGuardLaunching(char *titleid) {   /* 1 and the title while a launch is past the guard, its process not yet up */
+	uint32_t st; ENTER_SYSCALL(st);
+	char t[12]; enter(); memcpy(t, launching, sizeof t); leave();
+	if (titleid) ksceKernelCopyToUser(titleid, t, sizeof t);
+	EXIT_SYSCALL(st);
+	return t[0] != 0;
 }
 int nsyncGuardRelease(const char *titleid, int ok) {
 	uint32_t st; ENTER_SYSCALL(st);
