@@ -1,0 +1,13 @@
+name: build
+on: [push, pull_request]
+jobs:
+  vpk:
+    runs-on: ubuntu-latest
+    container: vitasdk/vitasdk:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build && make -C build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nativ_sync
+          path: build/nativ_sync.vpk
