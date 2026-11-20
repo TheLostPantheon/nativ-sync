@@ -39,4 +39,7 @@ jobs:
           name: nativ_sync
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" nativ_sync.vpk --repo "${GITHUB_REPOSITORY}" --draft --title "Nativ Sync ${GITHUB_REF_NAME#v}" --notes "Install nativ_sync.vpk, open Nativ Sync, Settings, Install the background service, and restart. Then pair from Nativ: Settings, Vita sync."
+        run: |
+          gh release create "${GITHUB_REF_NAME}" nativ_sync.vpk --repo "${GITHUB_REPOSITORY}" --draft \
+            --title "Nativ Sync ${GITHUB_REF_NAME#v}" \
+            --notes "Install nativ_sync.vpk, open Nativ Sync, Settings, Install the background service, and restart. Then pair from Nativ (Settings, Vita sync)."
