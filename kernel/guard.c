@@ -50,7 +50,7 @@ static void post(int kind, const char *titleid, int choice, int pid) {
 
 /* ---- the overlay ---- */
 static SceUID fb_uid = -1; static Canvas canvas; static SceDisplayFrameBuf fb; static int head;
-static int overlay_ready(void) {   /* the framebuffer, made once and kept: the display may still point at it */
+static int overlay_ready(void) {   /* the framebuffer: made when a screen shows, given back by hide() */
 	if (fb_uid < 0) {
 		fb_uid = ksceKernelAllocMemBlock("NativSyncOverlay", 0x40404006, 0x240000, NULL);   /* kernel CDRAM, as BubbleLock */
 		if (fb_uid < 0) return 0;
@@ -63,7 +63,15 @@ static int overlay_ready(void) {   /* the framebuffer, made once and kept: the d
 	return 1;
 }
 static void show(void) { ksceDisplaySetFrameBufInternal(head, 1, &fb, SCE_DISPLAY_SETBUF_NEXTFRAME); ksceDisplayWaitVblankStart(); }
-static void hide(void) { screen_clear(&canvas); show(); }
+/* the screen gone, and its memory given back: 2.25 MB of video memory that Killzone, which fills its budget exactly,
+ * failed for when it was kept. The layer is pointed at nothing first and two refreshes pass; if the display refuses
+ * that, the memory stays (as before) rather than be freed under it. */
+static void hide(void) {
+	screen_clear(&canvas); show();
+	if (ksceDisplaySetFrameBufInternal(head, 1, NULL, SCE_DISPLAY_SETBUF_NEXTFRAME) < 0) return;
+	ksceDisplayWaitVblankStart(); ksceDisplayWaitVblankStart();
+	ksceKernelFreeMemBlock(fb_uid); fb_uid = -1;
+}
 static uint32_t buttons(void) { SceCtrlData pad; memset(&pad, 0, sizeof pad); ksceCtrlPeekBufferPositive(0, &pad, 1); return pad.buttons; }
 
 static void cat(char *d, int n, const char *a, const char *b, const char *c) {
@@ -112,7 +120,7 @@ static void wait_release(const NsyncGuardInfo *g, const char *doing, int watch_s
 		screen_progress(&canvas, g->game[0] ? g->game : g->titleid, l1, "The game starts with the save on this Vita.");
 		for (SceInt64 t1 = now(); now() - t1 < NOTE_US; ) show();
 		hide();
-	}
+	} else if (shown) hide();
 }
 
 typedef struct { const char *titleid; int type; const char *path; void *opt; } Launch;
