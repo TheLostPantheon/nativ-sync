@@ -16,6 +16,7 @@
 #include <psp2/net/netctl.h>
 #include <psp2/appmgr.h>
 #include <psp2/registrymgr.h>
+#include <psp2/rtc.h>
 #include <stdarg.h>
 #include "svc.h"
 
@@ -36,7 +37,10 @@ static int len_(const char *s) { int n = 0; while (s[n]) n++; return n; }
 static void cpy(char *d, const char *s, int cap) { int i = 0; for (; i < cap - 1 && s[i]; i++) d[i] = s[i]; d[i] = 0; }
 void svc_log(const char *fmt, ...) {
 	char line[300]; va_list ap; va_start(ap, fmt);
-	int n = sceClibVsnprintf(line, sizeof line - 1, fmt, ap); va_end(ap);
+	SceDateTime t; sceRtcGetCurrentClockLocalTime(&t);
+	int h = sceClibSnprintf(line, sizeof line, "%02d:%02d:%02d ", t.hour, t.minute, t.second);
+	int n = sceClibVsnprintf(line + h, sizeof line - 1 - h, fmt, ap); va_end(ap);
+	if (n >= 0) n += h;
 	if (n < 0) return;
 	if (n > (int)sizeof line - 2) n = sizeof line - 2;
 	line[n++] = '\n';
@@ -189,6 +193,10 @@ static void poll_running(void) {
 	sceKernelUnlockMutex(ev_lock, 1);
 }
 
+/* a sync session (BEGIN .. END): the guard held across a whole fetch or send, so a launch can't slip in between its
+ * requests; one at a time, dropped after a minute without END (a computer gone mid-sync) */
+static char session_id[12]; static SceInt64 session_t;
+static void op_end(const char *id, int ok, int final);
 static int watcher(SceSize a, void *p) {   /* the kernel's launch events, and the running list once a second */
 	nsyncGuardClear();
 	conflicts_load();
@@ -206,9 +214,16 @@ static int watcher(SceSize a, void *p) {   /* the kernel's launch events, and th
 				else if (e.choice == NSYNC_CHOICE_VITA) choice_for(pc, e.titleid, c);
 				else event_for("choice", e.titleid, c, pc);
 			} else if (e.kind == NSYNC_EVENT_LAUNCH) event("waiting", e.titleid, 0);
+			else if (e.kind == NSYNC_EVENT_STARTED && svc_valid_id(e.titleid) && !is_running(e.titleid)) {   /* (at once: the poll is up to a second behind) */
+				sceKernelLockMutex(ev_lock, 1, NULL);
+				if (nrun < 20) cpy(run_now[nrun++], e.titleid, 12);
+				sceKernelUnlockMutex(ev_lock, 1);
+				event("started", e.titleid, 0);
+			}
 		} else if (r != (int)NSYNC_ERROR_TIMEOUT) sceKernelDelayThread(1000000);
 		poll_running();
 		app_choice();
+		if (session_id[0] && sceKernelGetSystemTimeWide() - session_t > 60000000) { svc_log("session %s dropped: no END in a minute", session_id); char id[12]; cpy(id, session_id, sizeof id); session_id[0] = 0; op_end(id, 0, 1); }
 	}
 	return sceKernelExitDeleteThread(0);
 }
@@ -216,6 +231,7 @@ static int watcher(SceSize a, void *p) {   /* the kernel's launch events, and th
 /* the launch guard around work on a save: a launch of that game waits until it's done */
 static int op_begin(const char *id) {
 	if (is_running(id) && sceClibStrcmp(held_for_pc, id)) return -1;
+	if (!sceClibStrcmp(session_id, id)) return 0;   /* (the session holds the guard) */
 	NsyncGuardInfo g; NsyncGuardInfo *had = guard_of(id);
 	if (had) g = *had; else { sceClibMemset(&g, 0, sizeof g); cpy(g.titleid, id, sizeof g.titleid); }
 	g.state = NSYNC_GUARD_SYNC;
@@ -225,6 +241,10 @@ static int op_begin(const char *id) {
 	return 0;
 }
 static void op_end(const char *id, int ok, int final) {
+	if (!sceClibStrcmp(session_id, id)) {   /* (the guard stays until END; a launch held for this save goes once it's in) */
+		if (final && !sceClibStrcmp(held_for_pc, id)) { nsyncGuardRelease(id, ok); held_for_pc[0] = 0; }
+		return;
+	}
 	NsyncGuardInfo *had = guard_of(id);
 	if (had) nsyncGuardSet(had);
 	else { NsyncGuardInfo g; sceClibMemset(&g, 0, sizeof g); cpy(g.titleid, id, sizeof g.titleid); nsyncGuardSet(&g); }
@@ -252,7 +272,8 @@ static int send_line(int s, const char *t) { return send_all(s, t, len_(t)) < 0 
 
 typedef struct {
 	int fd, slot; NsyncSession ses; char pc_id[17], pc_name[64]; int last_seq;
-	uint8_t *in, *out;   /* frame buffers: NSYNC_PLAIN_MAX + overhead each */
+	uint8_t *in, *out;   /* frame buffers, NSYNC_PLAIN_MAX + overhead each: made for a connection, freed with it */
+	SceUID mem;
 } Conn;
 static Conn conns[MAX_CONN];
 static uint8_t *plain_out;   /* (one request at a time, under cmd_lock) */
@@ -386,6 +407,15 @@ static int handle(Conn *c, uint8_t *msg, int n) {
 		int len = save_commit(id, c->pc_id, hash, body ? body : "", body_len, (char *)plain_out + 3, NSYNC_PLAIN_MAX - 3, why, sizeof why);
 		op_end(id, len >= 0, 1);
 		r = len < 0 ? reply_err(c, "%s", why) : reply_payload(c, plain_out + 3, len);
+	} else if (!sceClibStrcmp(cmd, "BEGIN")) {   /* a fetch or send of this save starts: hold its launches until END */
+		if (session_id[0] && sceClibStrcmp(session_id, id)) { r = reply_err(c, "busy with %s", session_id); goto out; }
+		if (op_begin(id) < 0) { r = reply_err(c, "busy"); goto out; }
+		cpy(session_id, id, sizeof session_id); session_t = sceKernelGetSystemTimeWide();
+		r = reply(c, "OK");
+	} else if (!sceClibStrcmp(cmd, "END")) {
+		int ok = (int)num(&s);
+		if (!sceClibStrcmp(session_id, id)) { session_id[0] = 0; op_end(id, ok, 1); }
+		r = reply(c, "OK");
 	} else if (!sceClibStrcmp(cmd, "BASE")) {
 		char hash[80]; arg(&s, hash, sizeof hash); uint8_t h[32];
 		r = nsync_unhex(h, 32, hash) ? reply_err(c, "bad hash") : save_set_base(c->pc_id, id, hash) < 0 ? reply_err(c, "can't write") : reply(c, "OK");
@@ -452,6 +482,11 @@ static int conn_thread(SceSize args, void *argp) {
 	Conn *c = &conns[*(int *)argp];
 	char line[256];
 	int fd = c->fd, ok = 0;
+	const int fsz = (NSYNC_PLAIN_MAX + 64 + 0xFFF) & ~0xFFF;   /* (light: no connection, no buffers) */
+	c->mem = sceKernelAllocMemBlock("nativ_sync_conn", SCE_KERNEL_MEMBLOCK_TYPE_USER_RW, 2 * fsz, NULL);
+	uint8_t *base = 0;
+	if (c->mem < 0 || sceKernelGetMemBlockBase(c->mem, (void **)&base) < 0) { svc_log("connection memory 0x%08X", c->mem); goto done; }
+	c->in = base; c->out = base + fsz;
 	int tmo = 10 * 1000 * 1000; sceNetSetsockopt(fd, SCE_NET_SOL_SOCKET, SCE_NET_SO_RCVTIMEO, &tmo, sizeof tmo);
 	if (recv_line(fd, line, sizeof line) < 0) goto done;
 	if (!sceClibStrncmp(line, "NSYNC1 PAIR ", 12)) { do_pair(fd, line + 12); goto done; }
@@ -487,6 +522,8 @@ static int conn_thread(SceSize args, void *argp) {
 done:
 	(void)ok;
 	sceNetSocketClose(fd);
+	if (c->mem >= 0) sceKernelFreeMemBlock(c->mem);
+	c->mem = -1; c->in = c->out = 0;
 	c->fd = -1;
 	int any = 0; for (int i = 0; i < MAX_CONN; i++) if (conns[i].fd >= 0) any = 1;
 	if (!any) { nsyncGuardPcOnline(0); online_pc[0] = online_pc_now[0] = 0; status_write(); }
@@ -561,14 +598,10 @@ int module_start(SceSize argc, const void *args) {
 	log_lock = sceKernelCreateMutex("nativ_sync_log", 0, 0, NULL);
 	ev_lock = sceKernelCreateMutex("nativ_sync_ev", 0, 0, NULL);
 	sceIoMkdir(DATA, 0777);
-	/* buffers: a frame in and out per connection, and the shared reply text (about 900 KiB in all) */
-	int fsz = NSYNC_PLAIN_MAX + 64, total = (MAX_CONN * 2 + 1) * fsz;
-	total = (total + 0xFFF) & ~0xFFF;
-	mem = sceKernelAllocMemBlock("nativ_sync", SCE_KERNEL_MEMBLOCK_TYPE_USER_RW, total, NULL);
-	uint8_t *base = 0;
-	if (mem < 0 || sceKernelGetMemBlockBase(mem, (void **)&base) < 0) { svc_log("no memory: 0x%08X", mem); return SCE_KERNEL_START_SUCCESS; }
-	for (int i = 0; i < MAX_CONN; i++) { conns[i].fd = -1; conns[i].in = base + (2 * i) * fsz; conns[i].out = base + (2 * i + 1) * fsz; }
-	plain_out = base + (2 * MAX_CONN) * fsz;
+	/* the shared reply text (128 KiB); each connection makes its own frame buffers while it lasts */
+	mem = sceKernelAllocMemBlock("nativ_sync", SCE_KERNEL_MEMBLOCK_TYPE_USER_RW, (NSYNC_PLAIN_MAX + 64 + 0xFFF) & ~0xFFF, NULL);
+	if (mem < 0 || sceKernelGetMemBlockBase(mem, (void **)&plain_out) < 0) { svc_log("no memory: 0x%08X", mem); return SCE_KERNEL_START_SUCCESS; }
+	for (int i = 0; i < MAX_CONN; i++) { conns[i].fd = -1; conns[i].mem = -1; }
 	char b[40];
 	if (read_small(DATA "/console.txt", b, sizeof b) >= 16 && !nsync_unhex((uint8_t *)b + 20, 8, b)) cpy(console_id, b, 17);
 	else { uint8_t r[8]; random_bytes(r, 8); nsync_hex(console_id, r, 8); write_small(DATA "/console.txt", console_id, 16); }
@@ -586,6 +619,9 @@ int module_stop(SceSize argc, const void *args) {
 	if (udp_fd >= 0) sceNetSocketClose(udp_fd);
 	for (int i = 0; i < MAX_CONN; i++) if (conns[i].fd >= 0) sceNetSocketClose(conns[i].fd);
 	for (int i = 0; i < 3; i++) if (threads[i] >= 0) { SceUInt t = 3000000; sceKernelWaitThreadEnd(threads[i], NULL, &t); }
+	for (int w = 0; w < 30; w++) { int any = 0; for (int i = 0; i < MAX_CONN; i++) if (conns[i].fd >= 0) any = 1; if (!any) break; sceKernelDelayThread(100000); }
 	nsyncGuardClear();
+	if (mem >= 0) sceKernelFreeMemBlock(mem);   /* (an update unloads it: what it holds goes back to the shell) */
+	mem = -1;
 	return SCE_KERNEL_STOP_SUCCESS;
 }

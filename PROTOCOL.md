@@ -80,6 +80,7 @@ the empty text.
 | `GET <id> <path> <offset> <length>` | `OK\n` and the bytes (at most 128 KiB less that); `slot/<n>` is slot n's parameter |
 | `PUT <id> <path> <offset> <total>` + bytes | `OK`: into the staging folder for that game; nothing is applied yet |
 | `COMMIT <id> <hash>` + the manifest's canonical text | the text must hash to `<hash>`. Each file and slot in it comes from the staging folder, or must already be on the Vita as it is; files and slots missing from it are removed. The save is backed up first, everything is read back and checked after, and any failure puts the backup back. On success the manifest becomes the base: `{"backup":<name>}` |
+| `BEGIN <id>` / `END <id> <ok>` | around a fetch or send (MANIFEST, GETs; or PUTs, COMMIT): the game's launches are held for the whole of it, not just each request (`ERR busy` when it's running). A session without END is dropped after a minute |
 | `BASE <id> <hash>` | records the base after a sync that sent nothing to the Vita |
 | `GUARD <id>` + `key<TAB>value` lines: `state` (`none` or `conflict`), `game`, `pc_when`, `pc_detail`, `vita_when`, `vita_detail` | sets what the launch guard shows for the game |
 | `RELEASE <id> <ok>` | answers a launch the Vita is holding for this PC (see Events) |
