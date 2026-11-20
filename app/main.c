@@ -177,6 +177,10 @@ static void load_games(void) {
 	for (int i = 0; i < ngames; i++) last_sync(&games[i]);
 	sort_games();
 }
+static int health(void) {   /* boots in a row the service didn't confirm: from 3 it's switched off */
+	char b[16]; if (read_file("ur0:data/nativ-sync/health.txt", b, sizeof b) <= 0) return 0;
+	return atoi(b);
+}
 static void refresh(void) { load_pcs(); load_games(); load_status(); load_conflicts(); pending_choice(); sort_games(); service_alive = kernel_ok ? nsyncUserServiceAlive() : 0; }
 static int sel;
 static void update(void) {   /* every couple of seconds on the home screen: new states, the order they give, the cursor kept on its game */
@@ -278,6 +282,7 @@ static void draw_home(void) {
 	draw_header(NULL);
 	char st[160];
 	if (!kernel_ok) snprintf(st, sizeof st, has_firmware ? "Its kernel module didn't load." : "This firmware isn't supported.");
+	else if (installed() && health() >= 3) snprintf(st, sizeof st, "Switched off: it failed to start %d times in a row. Settings turns it back on.", health() - 1);
 	else if (!installed()) snprintf(st, sizeof st, "Not set up yet: Settings installs it.");
 	else if (!service_alive) snprintf(st, sizeof st, "Set up: restart your Vita to start it.");
 	else if (!npcs) snprintf(st, sizeof st, "Running. Pair a computer to start syncing.");
@@ -384,7 +389,8 @@ static void draw_settings(void) {
 	draw_header("Settings");
 	int y = 100, inst = installed();
 	const char *items[12]; int n = 0;
-	items[n++] = inst ? "Remove the background service" : "Install the background service";
+	int off = inst && health() >= 3;
+	items[n++] = off ? "Turn the background service back on" : inst ? "Remove the background service" : "Install the background service";
 	for (int i = 0; i < npcs && n < 10; i++) items[n++] = pcs[i].name;
 	if (settings_sel >= n) settings_sel = n - 1;
 	wrap(30, y, DIM, 0.9f, inst ? "The service starts with your Vita and syncs in the background. Removing it takes effect at the next restart; your pairings and backups stay."
@@ -409,7 +415,7 @@ int main(void) {
 	char kpath[96];
 	snprintf(kpath, sizeof kpath, "ux0:app/%s/nsync_kernel.skprx", self_id);   /* (not app0: the kernel can't see a process's own mount) */
 	sceIoRemove("ux0:data/nativ-sync/app.log"); sceIoMkdir("ux0:data/nativ-sync", 0777);
-	int km = taiLoadStartKernelModule(kpath, 0, NULL, 0);
+	int km = taiLoadStartKernelModule(kpath, 4, "app", 0);   /* ("app": not a boot, for its start count) */
 	trace("kernel module 0x%08X", km);
 	snprintf(kpath, sizeof kpath, "ux0:app/%s/nsync_user.suprx", self_id);   /* the bridge, bound to it now (nsync_user.c) */
 	int um = sceKernelLoadStartModule(kpath, 0, NULL, 0, NULL, NULL);
@@ -459,7 +465,10 @@ int main(void) {
 			if ((press & SCE_CTRL_DOWN) && settings_sel + 1 < n) settings_sel++;
 			if ((press & SCE_CTRL_UP) && settings_sel > 0) settings_sel--;
 			if (press & SCE_CTRL_CROSS) {
-				if (settings_sel == 0) { if (installed()) do_remove(); else if (kernel_ok) do_install(); else snprintf(install_msg, sizeof install_msg, "This firmware isn't supported, so it can't be installed."); }
+				if (settings_sel == 0) {
+					if (installed() && health() >= 3) { write_file("ur0:data/nativ-sync/health.txt", "0\n", 2); snprintf(install_msg, sizeof install_msg, "Turned back on. Restart your Vita to start it."); }
+					else if (installed()) do_remove(); else if (kernel_ok) do_install(); else snprintf(install_msg, sizeof install_msg, "This firmware isn't supported, so it can't be installed.");
+				}
 				else {
 					char p[96]; snprintf(p, sizeof p, DATA "/pairs/%s", pcs[settings_sel - 1].id); sceIoRemove(p);
 					snprintf(install_msg, sizeof install_msg, "Removed %s. Pair it again to sync with it.", pcs[settings_sel - 1].name); load_pcs();

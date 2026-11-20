@@ -27,6 +27,24 @@ Each side's save is compared with how it was at the last sync: a save changed on
 save changed on both is a question for you, answered in the launcher or the app. Whatever is replaced is backed up
 first, on the side it's replaced on. DESIGN.md has the rules, the conflict choice and the screens.
 
+## Installing
+
+1. Install `nativ_sync.vpk`, with VitaDB Downloader or VitaShell.
+2. Open **Nativ Sync**, press □ for Settings, choose **Install the background service**, and restart the Vita. Installing
+   adds two lines to your taiHEN config, backed up first as `config.txt.nativ-sync-backup`.
+3. In the app, press △ to **Pair a computer**: it shows a six-digit code. In Nativ, open Settings, Vita sync, Find my
+   Vita, and type it.
+
+From then on games sync on their own. A game whose save changed on both sides shows **Needs a choice** in the app (✕
+opens it), and the Vita asks too when you start it.
+
+**Removing:** Settings, Remove the background service, then restart. Your pairings and backups stay in
+`ux0:data/nativ-sync`.
+
+**If it ever fails to start:** the Vita counts boots the service didn't get through. After two in a row its launch hook
+stays off, after three the service does too, and the Vita starts as if Nativ Sync weren't installed. The app says so,
+and Settings turns it back on.
+
 ## Supported firmware
 
 3.55 to 3.74, every retail firmware a Vita can be modded on. Checked on 3.65; the others use VitaShell's tables, 3.74

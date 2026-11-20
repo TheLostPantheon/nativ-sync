@@ -223,6 +223,9 @@ static int watcher(SceSize a, void *p) {   /* the kernel's launch events, and th
 		} else if (r != (int)NSYNC_ERROR_TIMEOUT) sceKernelDelayThread(1000000);
 		poll_running();
 		app_choice();
+		static int healthy; static SceInt64 started;   /* a minute up: this boot was fine (the kernel module's count back to 0) */
+		if (!started) started = sceKernelGetSystemTimeWide();
+		if (!healthy && sceKernelGetSystemTimeWide() - started > 60000000) { write_small("ur0:data/nativ-sync/health.txt", "0\n", 2); healthy = 1; }
 		if (session_id[0] && sceKernelGetSystemTimeWide() - session_t > 60000000) { svc_log("session %s dropped: no END in a minute", session_id); char id[12]; cpy(id, session_id, sizeof id); session_id[0] = 0; op_end(id, 0, 1); }
 	}
 	return sceKernelExitDeleteThread(0);

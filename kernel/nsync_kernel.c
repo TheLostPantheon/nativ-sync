@@ -14,6 +14,9 @@
 #include <psp2kern/kernel/modulemgr.h>
 #include <psp2kern/kernel/sysmem.h>
 #include <psp2kern/kernel/threadmgr.h>
+#include <psp2kern/io/fcntl.h>
+#include <psp2kern/io/stat.h>
+#include <stdio.h>
 #include <string.h>
 #include <taihen.h>
 #include "nsync_kernel.h"
@@ -86,6 +89,25 @@ int nsyncFirmware(char *name) {   /* 1 and the firmware's name (e.g. "3.65") whe
 }
 
 int guard_start(void); void guard_stop(void);
+/* boot safety: starts not yet confirmed healthy, counted in ur0:data/nativ-sync/health.txt (the service writes 0 after a
+ * healthy minute). From the second unconfirmed boot in a row the launch hook stays off; from the third the loader
+ * doesn't start the service either (shell/boot.c), and the Vita boots as if Nativ Sync weren't installed until the app
+ * turns it back on. The app loading this module itself (argp "app") isn't a boot. */
+#define HEALTH "ur0:data/nativ-sync/health.txt"
+static int health_bump(void) {
+	char b[16]; int n = 0; memset(b, 0, sizeof b);
+	SceUID f = ksceIoOpen(HEALTH, SCE_O_RDONLY, 0);
+	if (f >= 0) { ksceIoRead(f, b, sizeof b - 1); ksceIoClose(f); }
+	for (char *c = b; *c >= '0' && *c <= '9'; c++) n = n * 10 + (*c - '0');
+	ksceIoMkdir("ur0:data", 0777); ksceIoMkdir("ur0:data/nativ-sync", 0777);
+	f = ksceIoOpen(HEALTH, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0666);
+	if (f >= 0) { char o[16]; int l = snprintf(o, sizeof o, "%d\n", n + 1); ksceIoWrite(f, o, l); ksceIoClose(f); }
+	return n;
+}
 void _start() __attribute__ ((weak, alias("module_start")));
-int module_start(SceSize args, void *argp) { guard_start(); return SCE_KERNEL_START_SUCCESS; }   /* (the mount works without it) */
+int module_start(SceSize args, void *argp) {
+	int from_app = args == 4 && argp && !memcmp(argp, "app", 4);
+	if (from_app || health_bump() < 2) guard_start();   /* (the mount works without the hook) */
+	return SCE_KERNEL_START_SUCCESS;
+}
 int module_stop(SceSize args, void *argp) { guard_stop(); return SCE_KERNEL_STOP_SUCCESS; }

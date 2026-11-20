@@ -24,8 +24,17 @@ static void logf_(const char *fmt, ...) {
 	SceUID f = sceIoOpen(LOG, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0666);
 	if (f >= 0) { sceIoWrite(f, m, n); sceIoClose(f); }
 }
+static int unhealthy(void) {   /* boots in a row the service didn't confirm (the kernel module counts them) */
+	char b[16]; int n = 0; sceClibMemset(b, 0, sizeof b);
+	SceUID f = sceIoOpen("ur0:data/nativ-sync/health.txt", SCE_O_RDONLY, 0);
+	if (f >= 0) { sceIoRead(f, b, sizeof b - 1); sceIoClose(f); }
+	for (char *c = b; *c >= '0' && *c <= '9'; c++) n = n * 10 + (*c - '0');
+	return n;
+}
 static int loader(SceSize a, void *p) {
 	const char *path = 0; SceIoStat st;
+	int n = unhealthy();
+	if (n >= 3) { logf_("nsync_boot: switched off: the service didn't stay up %d starts in a row (the app turns it back on)", n - 1); return sceKernelExitDeleteThread(0); }
 	for (int i = 0; i < 2 && !path; i++) if (sceIoGetstat(paths[i], &st) >= 0) path = paths[i];
 	if (!path) { logf_("nsync_boot: no service file"); return sceKernelExitDeleteThread(0); }
 	SceUID last = 0;
