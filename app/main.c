@@ -94,7 +94,7 @@ static void sfo_title(const char *id, char *out, int cap) {
 typedef struct { char id[17], name[64]; } Pc;
 static Pc pcs[8]; static int npcs;
 static char online_pc[17];
-typedef struct { char id[12], name[96], when[32]; long long when_stamp; int conflict; vita2d_texture *icon; int icon_tried; } Game;
+typedef struct { char id[12], name[96], when[32]; long long when_stamp; int conflict; char pc_name[48], vita_when[48], vita_detail[96], pc_when[48], pc_detail[96]; vita2d_texture *icon; int icon_tried; } Game;
 static Game games[200]; static int ngames;
 static int service_alive;
 
@@ -120,6 +120,26 @@ static void load_status(void) {
 		if (!strncmp(l, "online ", 7)) snprintf(online_pc, sizeof online_pc, "%s", l + 7);
 		else if (!strncmp(l, "conflict ", 9)) for (int i = 0; i < ngames; i++) if (!strcmp(games[i].id, l + 9)) games[i].conflict = 1;
 	}
+}
+static void load_conflicts(void) {   /* DATA/conflicts.txt (the service's): each side's when and what, for the choice */
+	static char c[32 * 520];
+	if (read_file(DATA "/conflicts.txt", c, sizeof c) <= 0) return;
+	for (char *l = c; *l; ) {
+		char *nl = l; while (*nl && *nl != '\n') nl++;
+		char save = *nl; *nl = 0;
+		char *f[8]; int n = 0; f[n++] = l;
+		for (char *t = l; *t && n < 8; t++) if (*t == '\t') { *t = 0; f[n++] = t + 1; }
+		if (n == 8) for (int i = 0; i < ngames; i++) if (!strcmp(games[i].id, f[0])) {
+			Game *g = &games[i]; g->conflict = 1;
+			snprintf(g->pc_name, sizeof g->pc_name, "%s", f[3]); snprintf(g->vita_when, sizeof g->vita_when, "%s", f[4]); snprintf(g->vita_detail, sizeof g->vita_detail, "%s", f[5]);
+			snprintf(g->pc_when, sizeof g->pc_when, "%s", f[6]); snprintf(g->pc_detail, sizeof g->pc_detail, "%s", f[7]);
+		}
+		*nl = save; l = *nl ? nl + 1 : nl;
+	}
+}
+static void pending_choice(void) {   /* a choice the service hasn't read yet: its game isn't waiting any more */
+	char c[32]; if (read_file(DATA "/choice.txt", c, sizeof c) <= 0) return;
+	for (int i = 0; i < ngames; i++) if (!strncmp(c, games[i].id, 9)) games[i].conflict = 0;
 }
 static long long stamp_of(const SceDateTime *t) { return ((((long long)t->year * 100 + t->month) * 100 + t->day) * 100 + t->hour) * 100 + t->minute; }
 static void last_sync(Game *g) {   /* the newest base any paired computer recorded for it */
@@ -157,12 +177,12 @@ static void load_games(void) {
 	for (int i = 0; i < ngames; i++) last_sync(&games[i]);
 	sort_games();
 }
-static void refresh(void) { load_pcs(); load_games(); load_status(); sort_games(); service_alive = kernel_ok ? nsyncUserServiceAlive() : 0; }
+static void refresh(void) { load_pcs(); load_games(); load_status(); load_conflicts(); pending_choice(); sort_games(); service_alive = kernel_ok ? nsyncUserServiceAlive() : 0; }
 static int sel;
 static void update(void) {   /* every couple of seconds on the home screen: new states, the order they give, the cursor kept on its game */
 	char cur[12] = ""; if (sel < ngames) strcpy(cur, games[sel].id);
 	for (int i = 0; i < ngames; i++) last_sync(&games[i]);
-	load_status(); sort_games();
+	load_status(); load_conflicts(); pending_choice(); sort_games();
 	for (int i = 0; i < ngames; i++) if (!strcmp(games[i].id, cur)) sel = i;
 	service_alive = kernel_ok ? nsyncUserServiceAlive() : 0;
 }
@@ -228,7 +248,7 @@ static int do_remove(void) {
 }
 
 /* ---- the screens ---- */
-enum { HOME, PAIR, SETTINGS };
+enum { HOME, PAIR, SETTINGS, GAME };
 static int screen = HOME, scroll, settings_sel;
 static char code[8]; static char pair_before[8][17]; static int pair_nbefore, paired_now; static SceInt64 pair_t0;
 static void open_pairing(void) {
@@ -285,9 +305,10 @@ static void draw_home(void) {
 		text(920 - 12 - text_w(0.9f, state), y + 33, sc, 0.9f, state);
 	}
 	if (ngames > rows) { char m[32]; snprintf(m, sizeof m, "%d of %d", sel + 1, ngames); text(920 - text_w(0.8f, m), 524, FAINT, 0.8f, m); }
-	button_hint(30, 524, "\xE2\x96\xB3", RGBA(88, 214, 171), "Pair a computer");
-	button_hint(250, 524, "\xE2\x96\xA1", RGBA(240, 140, 200), "Settings");
-	button_hint(420, 524, "\xE2\x97\x8B", RGBA(255, 110, 110), "Quit");
+	button_hint(30, 524, "\xE2\x9C\x95", RGBA(122, 166, 255), "Open");
+	button_hint(150, 524, "\xE2\x96\xB3", RGBA(88, 214, 171), "Pair a computer");
+	button_hint(370, 524, "\xE2\x96\xA1", RGBA(240, 140, 200), "Settings");
+	button_hint(540, 524, "\xE2\x97\x8B", RGBA(255, 110, 110), "Quit");
 }
 static void draw_pair(void) {
 	draw_header("Pair with a computer");
@@ -309,6 +330,55 @@ static void draw_pair(void) {
 		text(480 - text_w(0.9f, t) / 2, 380, FAINT, 0.9f, t);
 	}
 	button_hint(30, 524, "\xE2\x97\x8B", RGBA(255, 110, 110), "Back");
+}
+/* one game: its state, and for one needing a choice both saves and the choice (DATA/choice.txt, which the service
+ * reads within a second and hands to the computer: now when it's connected, else when it next connects) */
+static char game_id[12], game_msg[200];
+static Game *cur_game(void) { for (int i = 0; i < ngames; i++) if (!strcmp(games[i].id, game_id)) return &games[i]; return 0; }
+static const char *or_(const char *s, const char *d) { return s && s[0] ? s : d; }
+static int pc_online(void) { return online_pc[0] != 0; }
+static void choose(Game *g, const char *c) {
+	char line[32]; int n = snprintf(line, sizeof line, "%s %s\n", g->id, c);
+	write_file(DATA "/choice.txt", line, n);
+	const char *pc = or_(g->pc_name, "your computer");
+	if (!strcmp(c, "vita")) snprintf(game_msg, sizeof game_msg, pc_online() ? "Keeping the Vita's save: %s takes it now, and backs its own up." : "Keeping the Vita's save: %s takes it when it next connects, and backs its own up.", pc);
+	else snprintf(game_msg, sizeof game_msg, pc_online() ? "Using %s's save: it's on its way. This Vita's save is backed up first." : "Using %s's save: it comes when that computer next connects. This Vita's save is backed up first.", pc);
+	g->conflict = 0;
+}
+static void play_now(Game *g) {
+	char uri[64]; snprintf(uri, sizeof uri, "psgm:play?titleid=%s", g->id);
+	sceAppMgrLaunchAppByUri(0xFFFFF, uri);
+	sceKernelExitProcess(0);
+}
+static void side(int x, const char *who, const char *when, const char *what) {
+	vita2d_draw_rectangle(x, 200, 410, 120, CARD_HI);
+	text(x + 18, 232, AMBER, 0.95f, who);
+	text_fit(x + 18, 266, INK, 1.05f, or_(when, "Changed since the last sync"), 374);
+	text_fit(x + 18, 298, DIM, 0.9f, or_(what, ""), 374);
+}
+static void draw_game(void) {
+	Game *g = cur_game();
+	draw_header(NULL);
+	if (!g) { screen = HOME; return; }
+	if (g->icon) vita2d_draw_texture_scale(g->icon, 30, 66, 60.0f / vita2d_texture_get_width(g->icon), 60.0f / vita2d_texture_get_height(g->icon));
+	text_fit(106, 108, INK, 1.4f, g->name, 820);
+	if (g->conflict) {
+		char l[200]; snprintf(l, sizeof l, "Your Vita and %s both have new progress since the last sync. Which save should this game continue from?", or_(g->pc_name, "your computer"));
+		wrap(30, 158, DIM, 0.95f, l, 900, 26);
+		char on_pc[80]; snprintf(on_pc, sizeof on_pc, "On %s", or_(g->pc_name, "your computer"));
+		side(30, "On this Vita", g->vita_when, g->vita_detail); side(520, on_pc, g->pc_when, g->pc_detail);
+		wrap(30, 360, FAINT, 0.85f, "The save you don't keep is backed up, so you can change your mind later.", 900, 24);
+		button_hint(30, 524, "\xE2\x9C\x95", RGBA(122, 166, 255), "Keep the Vita's");
+		button_hint(240, 524, "\xE2\x96\xA1", RGBA(240, 140, 200), "Use the computer's");
+		button_hint(490, 524, "\xE2\x96\xB3", RGBA(88, 214, 171), "Play now");
+		button_hint(660, 524, "\xE2\x97\x8B", RGBA(255, 110, 110), "Back");
+	} else {
+		text(30, 170, g->when[0] ? GOOD : DIM, 1.0f, g->when[0] ? g->when : "Not synced yet");
+		if (game_msg[0]) wrap(30, 220, WARN, 0.95f, game_msg, 900, 26);
+		else wrap(30, 220, DIM, 0.95f, "It syncs on its own: before it starts and after it closes, here and on a paired computer.", 900, 26);
+		button_hint(30, 524, "\xE2\x96\xB3", RGBA(88, 214, 171), "Play now");
+		button_hint(200, 524, "\xE2\x97\x8B", RGBA(255, 110, 110), "Back");
+	}
 }
 static void draw_settings(void) {
 	draw_header("Settings");
@@ -374,6 +444,13 @@ int main(void) {
 			if ((press & SCE_CTRL_UP) && sel > 0) sel--;
 			if (press & SCE_CTRL_TRIANGLE) open_pairing();
 			if (press & SCE_CTRL_SQUARE) { screen = SETTINGS; settings_sel = 0; install_msg[0] = 0; }
+			if ((press & SCE_CTRL_CROSS) && sel < ngames) { snprintf(game_id, sizeof game_id, "%s", games[sel].id); game_msg[0] = 0; screen = GAME; }
+		} else if (screen == GAME) {
+			Game *g = cur_game();
+			if (press & SCE_CTRL_CIRCLE) { screen = HOME; update(); }
+			else if (g && (press & SCE_CTRL_TRIANGLE)) play_now(g);
+			else if (g && g->conflict && (press & SCE_CTRL_CROSS)) choose(g, "vita");
+			else if (g && g->conflict && (press & SCE_CTRL_SQUARE)) choose(g, "pc");
 		} else if (screen == PAIR) {
 			if (press & SCE_CTRL_CIRCLE) close_pairing();
 		} else {
@@ -392,7 +469,7 @@ int main(void) {
 		}
 		vita2d_start_drawing(); vita2d_clear_screen();
 		if (frame == 1) trace("first frame %d", screen);
-		if (screen == HOME) draw_home(); else if (screen == PAIR) draw_pair(); else draw_settings();
+		if (screen == HOME) draw_home(); else if (screen == PAIR) draw_pair(); else if (screen == GAME) draw_game(); else draw_settings();
 		vita2d_end_drawing(); vita2d_swap_buffers();
 	}
 	if (screen == PAIR) sceIoRemove(DATA "/pairing.txt");

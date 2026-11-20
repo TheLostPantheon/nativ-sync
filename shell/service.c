@@ -87,6 +87,7 @@ static int write_small(const char *p, const void *b, int n);
 /* ---- the guards this service has set, by game (what LIST reports; restored after a sync guard) ---- */
 #define MAX_GUARDS 32
 static NsyncGuardInfo guards[MAX_GUARDS];
+static char guard_pc[MAX_GUARDS][17];   /* the computer that set each one: the choice goes to it */
 static NsyncGuardInfo *guard_of(const char *id) { for (int i = 0; i < MAX_GUARDS; i++) if (guards[i].state && !sceClibStrcmp(guards[i].titleid, id)) return &guards[i]; return 0; }
 const char *svc_guard_name(const char *id) { NsyncGuardInfo *g = guard_of(id); return !g ? "none" : g->state == NSYNC_GUARD_CONFLICT ? "conflict" : "sync"; }
 static char online_pc[17];
@@ -95,26 +96,79 @@ static void status_write(void) {
 	if (online_pc[0]) svc_cat(b, sizeof b, &len, "online %s\n", online_pc);
 	for (int i = 0; i < MAX_GUARDS; i++) if (guards[i].state == NSYNC_GUARD_CONFLICT) svc_cat(b, sizeof b, &len, "conflict %s\n", guards[i].titleid);
 	write_small(DATA "/status.txt", b, len);
+	/* DATA/conflicts.txt: each conflict whole, so it outlives a restart and the app can show both sides. A line:
+	 * title, computer, game, computer's name, Vita's when and detail, computer's when and detail (tab-separated) */
+	static char c[MAX_GUARDS * 520]; len = 0;
+	for (int i = 0; i < MAX_GUARDS; i++) if (guards[i].state == NSYNC_GUARD_CONFLICT) {
+		NsyncGuardInfo *g = &guards[i];
+		svc_cat(c, sizeof c, &len, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", g->titleid, guard_pc[i], g->game, g->pc_name, g->vita_when, g->vita_detail, g->pc_when, g->pc_detail);
+	}
+	write_small(DATA "/conflicts.txt", c, len);
 }
-static void guard_store(const NsyncGuardInfo *g) {
+static void guard_store(const NsyncGuardInfo *g, const char *pc) {
 	NsyncGuardInfo *s = guard_of(g->titleid);
 	if (!s && g->state) for (int i = 0; i < MAX_GUARDS && !s; i++) if (!guards[i].state) s = &guards[i];
-	if (s) *s = *g;
+	if (s) { *s = *g; if (pc) cpy(guard_pc[s - guards], pc, 17); }
 	nsyncGuardSet(g);
 	status_write();
 }
+static void conflicts_load(void) {   /* at start: the conflicts from before a restart */
+	static char c[MAX_GUARDS * 520];
+	if (read_small(DATA "/conflicts.txt", c, sizeof c) <= 0) return;
+	for (char *l = c; *l; ) {
+		char *nl = l; while (*nl && *nl != '\n') nl++;
+		char save = *nl; *nl = 0;
+		char *f[8]; int n = 0; f[n++] = l;
+		for (char *t = l; *t && n < 8; t++) if (*t == '\t') { *t = 0; f[n++] = t + 1; }
+		if (n == 8 && svc_valid_id(f[0])) {
+			NsyncGuardInfo g; sceClibMemset(&g, 0, sizeof g); g.state = NSYNC_GUARD_CONFLICT;
+			cpy(g.titleid, f[0], sizeof g.titleid); cpy(g.game, f[2], sizeof g.game); cpy(g.pc_name, f[3], sizeof g.pc_name);
+			cpy(g.vita_when, f[4], sizeof g.vita_when); cpy(g.vita_detail, f[5], sizeof g.vita_detail); cpy(g.pc_when, f[6], sizeof g.pc_when); cpy(g.pc_detail, f[7], sizeof g.pc_detail);
+			guard_store(&g, f[1]);
+		}
+		*nl = save; l = *nl ? nl + 1 : nl;
+	}
+}
 
 /* ---- events for the PCs (a ring; each connection remembers the last it saw) ---- */
-typedef struct { int seq; char kind[10], id[12], choice[8]; } Event;
+typedef struct { int seq; char kind[10], id[12], choice[8], pc[17]; } Event;
 static Event ring[64]; static volatile int ev_seq;
 static char held_for_pc[12];   /* a launch held because the player chose the PC's save: the PC may write now */
-static void event(const char *kind, const char *id, const char *choice) {
+static void event_for(const char *kind, const char *id, const char *choice, const char *pc) {
 	sceKernelLockMutex(ev_lock, 1, NULL);
 	Event *e = &ring[ev_seq % 64]; e->seq = ev_seq + 1;
-	cpy(e->kind, kind, sizeof e->kind); cpy(e->id, id, sizeof e->id); cpy(e->choice, choice ? choice : "", sizeof e->choice);
+	cpy(e->kind, kind, sizeof e->kind); cpy(e->id, id, sizeof e->id); cpy(e->choice, choice ? choice : "", sizeof e->choice); cpy(e->pc, pc ? pc : "", sizeof e->pc);
 	ev_seq++;
 	sceKernelUnlockMutex(ev_lock, 1);
 	svc_log("event %s %s %s", kind, id, choice ? choice : "");
+}
+static void event(const char *kind, const char *id, const char *choice) { event_for(kind, id, choice, 0); }
+
+/* a choice for a computer: at once when it's connected, else kept (DATA/pending.txt) for its CHOICES */
+static char online_pc_now[17];
+static void choice_for(const char *pc, const char *id, const char *choice) {
+	if (pc[0] && !sceClibStrcmp(pc, online_pc_now)) { event_for("choice", id, choice, pc); return; }
+	char line[64]; int n = sceClibSnprintf(line, sizeof line, "%s %s %s\n", pc, id, choice);
+	SceUID f = sceIoOpen(DATA "/pending.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0666);
+	if (f >= 0) { sceIoWrite(f, line, n); sceIoClose(f); }
+	svc_log("choice %s %s kept for %s", id, choice, pc[0] ? pc : "any computer");
+}
+/* DATA/choice.txt, from the app: "<title> vita|pc|later" */
+static void app_choice(void) {
+	char b[64]; int n = read_small(DATA "/choice.txt", b, sizeof b);
+	if (n <= 0) return;
+	sceIoRemove(DATA "/choice.txt");
+	char id[12] = "", c[8] = ""; int k = 0, i = 0;
+	while (b[i] == ' ') i++;
+	while (b[i] && b[i] != ' ' && k < 11) id[k++] = b[i++];
+	while (b[i] == ' ') i++;
+	for (k = 0; b[i] && b[i] != '\n' && b[i] != ' ' && k < 7; ) c[k++] = b[i++];
+	NsyncGuardInfo *g = guard_of(id);
+	if (!g || g->state != NSYNC_GUARD_CONFLICT || (sceClibStrcmp(c, "vita") && sceClibStrcmp(c, "pc"))) return;
+	char pc[17]; cpy(pc, guard_pc[g - guards], sizeof pc);
+	g->state = NSYNC_GUARD_NONE; nsyncGuardSet(g); status_write();
+	svc_log("app: %s, keep the %s's", id, !sceClibStrcmp(c, "vita") ? "Vita" : "computer");
+	choice_for(pc, id, c);
 }
 
 /* ---- which games run ---- */
@@ -137,6 +191,7 @@ static void poll_running(void) {
 
 static int watcher(SceSize a, void *p) {   /* the kernel's launch events, and the running list once a second */
 	nsyncGuardClear();
+	conflicts_load();
 	while (running) {
 		NsyncEvent e; sceClibMemset(&e, 0, sizeof e);
 		int r = nsyncGuardWait(&e, 1000000);
@@ -145,11 +200,15 @@ static int watcher(SceSize a, void *p) {   /* the kernel's launch events, and th
 				static const char *const names[] = {"later", "vita", "pc", "later"};
 				const char *c = names[e.choice >= 0 && e.choice <= 3 ? e.choice : 0];
 				if (e.choice == NSYNC_CHOICE_PC) cpy(held_for_pc, e.titleid, sizeof held_for_pc);
-				if (e.choice == NSYNC_CHOICE_VITA || e.choice == NSYNC_CHOICE_PC) { NsyncGuardInfo *g = guard_of(e.titleid); if (g) g->state = NSYNC_GUARD_NONE; status_write(); }
-				event("choice", e.titleid, c);
+				char pc[17] = ""; NsyncGuardInfo *g = guard_of(e.titleid); if (g) cpy(pc, guard_pc[g - guards], sizeof pc);
+				if (e.choice == NSYNC_CHOICE_VITA || e.choice == NSYNC_CHOICE_PC) { if (g) g->state = NSYNC_GUARD_NONE; status_write(); }
+				if (e.choice == NSYNC_CHOICE_PC) event_for("choice", e.titleid, c, pc);   /* (the launch waits: only a connected computer can answer) */
+				else if (e.choice == NSYNC_CHOICE_VITA) choice_for(pc, e.titleid, c);
+				else event_for("choice", e.titleid, c, pc);
 			} else if (e.kind == NSYNC_EVENT_LAUNCH) event("waiting", e.titleid, 0);
 		} else if (r != (int)NSYNC_ERROR_TIMEOUT) sceKernelDelayThread(1000000);
 		poll_running();
+		app_choice();
 	}
 	return sceKernelExitDeleteThread(0);
 }
@@ -251,7 +310,7 @@ static int cmd_guard(Conn *c, const char *id, const char *body) {   /* key<TAB>v
 		p = *nl ? nl + 1 : nl;
 	}
 	if (!g.game[0]) { char p[96], v[8]; sceClibSnprintf(p, sizeof p, "ux0:app/%s/sce_sys/param.sfo", id); sfo_read(p, g.game, sizeof g.game, v, sizeof v); }
-	guard_store(&g);
+	guard_store(&g, c->pc_id);
 	return reply(c, "OK");
 }
 static int cmd_events(Conn *c, uint32_t ms) {   /* (outside cmd_lock) waits for events this connection hasn't seen */
@@ -264,6 +323,7 @@ static int cmd_events(Conn *c, uint32_t ms) {   /* (outside cmd_lock) waits for 
 		Event *e = &ring[s % 64];
 		svc_cat(o, sizeof o - 64, &len, "%s{\"kind\":\"%s\",\"id\":\"%s\"", first ? "" : ",", e->kind, e->id);
 		if (e->choice[0]) svc_cat(o, sizeof o - 64, &len, ",\"choice\":\"%s\"", e->choice);
+		if (e->pc[0]) svc_cat(o, sizeof o - 64, &len, ",\"pc\":\"%s\"", e->pc);
 		svc_cat(o, sizeof o - 64, &len, "}"); first = 0;
 	}
 	c->last_seq = ev_seq;
@@ -284,6 +344,23 @@ static int handle(Conn *c, uint8_t *msg, int n) {
 	sceKernelLockMutex(cmd_lock, 1, NULL);
 	int r = 0;
 	if (!sceClibStrcmp(cmd, "HELLO")) { while (*s == ' ') s++; r = cmd_hello(c, s); goto out; }
+	if (!sceClibStrcmp(cmd, "CHOICES")) {   /* the choices kept for this computer while it was away, handed over once */
+		static char pend[2048], keep[2048]; int kl = 0, len = 0; char *o = (char *)plain_out + 3; int cap = NSYNC_PLAIN_MAX - 3, first = 1;
+		svc_cat(o, cap, &len, "{\"choices\":[");
+		if (read_small(DATA "/pending.txt", pend, sizeof pend) > 0) {
+			for (char *l = pend; *l; ) {
+				char *nl = l; while (*nl && *nl != '\n') nl++;
+				char save = *nl; *nl = 0;
+				char pc[20] = "", id[12] = "", ch[8] = ""; const char *q = l; arg(&q, pc, sizeof pc); arg(&q, id, sizeof id); arg(&q, ch, sizeof ch);
+				if (!sceClibStrcmp(pc, c->pc_id) || !pc[0]) { svc_cat(o, cap, &len, "%s{\"id\":\"%s\",\"choice\":\"%s\"}", first ? "" : ",", id, ch); first = 0; }
+				else if (l[0]) kl += sceClibSnprintf(keep + kl, sizeof keep - kl, "%s\n", l);
+				*nl = save; l = *nl ? nl + 1 : nl;
+			}
+			if (kl) write_small(DATA "/pending.txt", keep, kl); else sceIoRemove(DATA "/pending.txt");
+		}
+		svc_cat(o, cap, &len, "]}");
+		r = reply_payload(c, (uint8_t *)o, len); goto out;
+	}
 	if (!sceClibStrcmp(cmd, "LIST")) { char only[12]; arg(&s, only, sizeof only); int len = saves_list((char *)plain_out + 3, NSYNC_PLAIN_MAX - 3, c->pc_id, only); r = reply_payload(c, plain_out + 3, len); goto out; }
 	arg(&s, id, sizeof id);
 	if (!svc_valid_id(id)) { r = reply_err(c, "not a title id"); goto out; }
@@ -393,7 +470,7 @@ static int conn_thread(SceSize args, void *argp) {
 	crypto_wipe(rec, sizeof rec);
 	tmo = 0; sceNetSetsockopt(fd, SCE_NET_SOL_SOCKET, SCE_NET_SO_RCVTIMEO, &tmo, sizeof tmo);
 	nsyncGuardPcOnline(1);
-	cpy(online_pc, c->pc_id, sizeof online_pc); status_write();
+	cpy(online_pc, c->pc_id, sizeof online_pc); cpy(online_pc_now, c->pc_id, sizeof online_pc_now); status_write();
 	for (int first = 1; running; first = 0) {
 		uint8_t head[4];
 		if (recv_all(fd, head, 4) < 0) break;
@@ -412,7 +489,7 @@ done:
 	sceNetSocketClose(fd);
 	c->fd = -1;
 	int any = 0; for (int i = 0; i < MAX_CONN; i++) if (conns[i].fd >= 0) any = 1;
-	if (!any) { nsyncGuardPcOnline(0); online_pc[0] = 0; status_write(); }
+	if (!any) { nsyncGuardPcOnline(0); online_pc[0] = online_pc_now[0] = 0; status_write(); }
 	return sceKernelExitDeleteThread(0);
 }
 

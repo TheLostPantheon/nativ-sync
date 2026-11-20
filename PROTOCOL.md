@@ -84,6 +84,7 @@ the empty text.
 | `GUARD <id>` + `key<TAB>value` lines: `state` (`none` or `conflict`), `game`, `pc_when`, `pc_detail`, `vita_when`, `vita_detail` | sets what the launch guard shows for the game |
 | `RELEASE <id> <ok>` | answers a launch the Vita is holding for this PC (see Events) |
 | `EVENTS <ms>` | waits up to that long for events: `{"events":[{"kind":"started"/"stopped"/"choice"/"waiting", "id", "choice":"vita"/"pc"/"later"}]}` |
+| `CHOICES` | `{"choices":[{"id", "choice":"vita"/"pc"}]}`: the choices made at the Vita (in its app, or at a launch there) for this PC while it was away, each handed over once. A PC asks on connecting, before comparing saves |
 | `BACKUPS <id>` / `RESTORE <id> <name>` | the Vita's backups of a save, and putting one back (the current save is backed up first) |
 
 A save is never read or written while its game is running on the Vita: those requests answer `ERR busy`. The one
@@ -94,7 +95,7 @@ exception is a launch the Vita is holding for this PC (below), which is exactly 
 The PC keeps one `EVENTS` request waiting while it's connected. Events:
 
 - `started` / `stopped`: a game started or stopped on the Vita. After `stopped`, the PC compares that game's save.
-- `choice`: the player answered the conflict choice at launch. `vita` and `later` need nothing at once (`vita`: take
+- `choice`: the player answered the conflict choice, at a launch or in the Vita's app. It names the PC whose conflict it was (`"pc"`); another PC ignores it. `vita` and `later` need nothing at once (`vita`: take
   the Vita's save once the game stops). `pc`: the launch is being held; the PC sends its save (`PUT`, `COMMIT`), and the
   commit releases the launch. If it can't, `RELEASE <id> 0` lets the game start with the Vita's save.
 - `waiting`: a game was started while this PC is syncing it; the launch is held until the commit (or `RELEASE`).
