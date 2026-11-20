@@ -30,7 +30,8 @@ first, on the side it's replaced on. DESIGN.md has the rules, the conflict choic
 
 ## Supported firmware
 
-3.55 to 3.73 for now (the mount's firmware tables). 3.74 is next.
+3.55 to 3.74, every retail firmware a Vita can be modded on. Checked on 3.65; the others use VitaShell's tables, 3.74
+from RealYoti's maintained fork, checked against 3.74's own SceAppMgr.
 
 ## Building
 
@@ -42,7 +43,8 @@ VitaSDK, then:
 
 ## Credits
 
-- VitaShell (TheOfficialFloW): the save mount's method and its per-firmware table.
+- VitaShell (TheOfficialFloW): the save mount's method and its per-firmware table; RealYoti's fork for 3.74's entry.
+- BubbleLock (Rinnegatamante): how a kernel module puts its own screen up while a launch waits.
 - Vita Save Manager (d3m3vilurr): the mount ids it tries, the one that works from the shell among them.
 
 ## Licence

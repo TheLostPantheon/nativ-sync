@@ -27,6 +27,7 @@ static const Firmware FIRMWARES[] = {   /* SceAppMgr's module NID -> its FindPro
 	{ 0x1C9879D6, 0x2DE1, 0x19E61, "3.65" }, { 0x54E2E984, 0x2DE1, 0x19E6D, "3.67" }, { 0xC3C538DE, 0x2DE1, 0x19E6D, "3.68" },
 	{ 0x321E4852, 0x2DE9, 0x19E95, "3.69" }, { 0x700DA0CD, 0x2DE9, 0x19E95, "3.70" }, { 0xF7846B4E, 0x2DE9, 0x19E95, "3.71" },
 	{ 0xA8E80BA8, 0x2DE9, 0x19E95, "3.72" }, { 0xB299D195, 0x2DE9, 0x19E95, "3.73" },
+	{ 0x30007BD3, 0x2DE9, 0x19E95, "3.74" },   /* (RealYoti's VitaShell; checked against 3.74's bootimage: SceAppMgr's NID, and both offsets start a function) */
 };
 static const Firmware *firmware(SceUID *modid) {
 	tai_module_info_t ti; ti.size = sizeof ti;
