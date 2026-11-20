@@ -100,6 +100,20 @@ then `ux0:app/<ID>`, on the Vita). When they differ, nothing is copied and the g
 versions. The fix is on the player's side: the same update in Nativ (its packs take updates), or the same version on the
 Vita.
 
+## Save origin
+
+Three things about where a save came from decide whether the other side can use it:
+
+- **The game's version.** Versions, above.
+- **The region.** One game has a title id per region (Uncharted is PCSA00029 in the US, PCSF00001 in Europe), and
+  saves are synced between equal title ids. Regional editions of one build usually share a save format, but not always,
+  so a save can cross between two title ids only where Nativ's pack lists them as variants of the same game, and the
+  player links them once. The version check still applies.
+- **The account.** A Vita save belongs to one console and one PSN account. The console part lives in `sce_sys`, which
+  stays on its own side. But some games also write the account id into their own save data, to stop saves being
+  shared, and Nativ gives each install a random account id of its own. So pairing makes Nativ use the Vita's account
+  id (from the Vita's settings, read by the service), and to every game both sides are the same account.
+
 ## Safety
 
 - A save is never read or written while its game is running on the Vita.
