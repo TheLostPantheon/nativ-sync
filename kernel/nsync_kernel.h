@@ -53,3 +53,4 @@ int nsyncGuardRelease(const char *titleid, int ok);
 /* 1 and the title id (12 bytes) while a launch has passed the guard but its process isn't up yet: the moment a mount
  * could race the game. The service checks it after setting a sync guard. */
 int nsyncGuardLaunching(char *titleid);
+int nsyncServiceAlive(void);   /* 1 while the background service runs (the app's status line) */

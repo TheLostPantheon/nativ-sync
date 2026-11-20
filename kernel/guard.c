@@ -211,6 +211,12 @@ int nsyncGuardWait(NsyncEvent *event, unsigned int timeout_us) {
 	EXIT_SYSCALL(st);
 	return res;
 }
+int nsyncServiceAlive(void) {   /* the service waited for events within the last few seconds: it runs */
+	uint32_t st; ENTER_SYSCALL(st);
+	int alive = now() - service_seen < SERVICE_ALIVE_US;
+	EXIT_SYSCALL(st);
+	return alive;
+}
 int nsyncGuardLaunching(char *titleid) {   /* 1 and the title while a launch is past the guard, its process not yet up */
 	uint32_t st; ENTER_SYSCALL(st);
 	char t[12]; enter(); memcpy(t, launching, sizeof t); leave();

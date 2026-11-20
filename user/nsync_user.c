@@ -6,6 +6,7 @@
 #include "../kernel/nsync_kernel.h"
 int nsyncUserMountSave(const char *save_titleid, const char *caller_titleid, char *mount_point) { return nsyncMountSave(save_titleid, caller_titleid, mount_point); }
 int nsyncUserFirmware(char *name) { return nsyncFirmware(name); }
+int nsyncUserServiceAlive(void) { return nsyncServiceAlive(); }
 void _start() __attribute__ ((weak, alias("module_start")));
 int module_start(SceSize args, void *argp) { return SCE_KERNEL_START_SUCCESS; }
 int module_stop(SceSize args, void *argp) { return SCE_KERNEL_STOP_SUCCESS; }

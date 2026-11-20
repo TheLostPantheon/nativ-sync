@@ -18,7 +18,7 @@ add_dependencies(nativ_sync nsync_user_stubs)
 target_link_directories(nativ_sync PRIVATE ${CMAKE_BINARY_DIR}/user/nsync_user_stubs)
 target_compile_options(nativ_sync PRIVATE -Wall -O2)
 target_link_libraries(nativ_sync NativSyncUser_stub_weak taihen_stub vita2d SceDisplay_stub SceGxm_stub SceSysmodule_stub SceCtrl_stub
-  ScePgf_stub ScePvf_stub SceCommonDialog_stub SceAppMgr_stub SceAppUtil_stub freetype png jpeg z m c)
+  ScePgf_stub ScePvf_stub SceCommonDialog_stub SceAppMgr_stub SceAppUtil_stub ScePower_stub freetype png jpeg z m c)
 vita_create_self(eboot.bin nativ_sync UNSAFE)
 vita_create_vpk(nativ_sync.vpk ${VITA_TITLEID} eboot.bin VERSION ${VITA_VERSION} NAME ${VITA_APP_NAME}
   FILE ${CMAKE_BINARY_DIR}/kernel/nsync_kernel.skprx nsync_kernel.skprx

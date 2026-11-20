@@ -18,3 +18,4 @@ NativSyncKernel:
         - nsyncGuardWait
         - nsyncGuardRelease
         - nsyncGuardLaunching
+        - nsyncServiceAlive

@@ -12,3 +12,4 @@ NativSyncUser:
       functions:
         - nsyncUserMountSave
         - nsyncUserFirmware
+        - nsyncUserServiceAlive
