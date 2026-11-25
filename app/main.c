@@ -271,8 +271,8 @@ static void cross(int cx, int cy, unsigned c) {   /* (the system font has no cro
 static void button_hint(int x, int y, const char *glyph, unsigned gc, const char *label) {
 	vita2d_draw_fill_circle(x + 11, y - 7, 12, CARD_HI);
 	if (!strcmp(glyph, "\xE2\x9C\x95")) cross(x + 11, y - 7, gc);
-	else text(x + 11 - text_w(0.8f, glyph) / 2, y - 1, gc, 0.8f, glyph);
-	text(x + 30, y, INK, 0.9f, label);
+	else text(x + 11 - text_w(1.0f, glyph) / 2, y - 1, gc, 1.0f, glyph);
+	text(x + 30, y, INK, 1.0f, label);
 }
 static void draw_header(const char *title) {
 	text(30, 46, AMBER, 1.1f, "Nativ Sync");
@@ -293,7 +293,7 @@ static void draw_home(void) {
 		else snprintf(st, sizeof st, "Running \xC2\xB7 paired with %s%s, not connected now", pcs[0].name, npcs > 1 ? " and others" : "");
 	}
 	vita2d_draw_fill_circle(36, 74, 5, service_alive ? GOOD : kernel_ok ? WARN : RGBA(229, 96, 90));
-	text(50, 80, DIM, 0.95f, st);
+	text(50, 80, DIM, 1.0f, st);
 	/* the games: icon, name, state */
 	const int top = 104, row = 58, rows = 7;
 	if (sel < scroll) scroll = sel;
@@ -302,14 +302,15 @@ static void draw_home(void) {
 	for (int i = scroll; i < ngames && i < scroll + rows; i++) {
 		Game *g = &games[i]; int y = top + (i - scroll) * row;
 		vita2d_draw_rectangle(20, y, 920, row - 6, i == sel ? CARD_HI : CARD);
+		if (i == sel) vita2d_draw_rectangle(20, y, 4, row - 6, AMBER);   /* (the focused row: plain to see) */
 		if (!g->icon_tried) { char p[96]; snprintf(p, sizeof p, "ur0:appmeta/%s/icon0.png", g->id); g->icon = vita2d_load_PNG_file(p); g->icon_tried = 1; }
 		if (g->icon) vita2d_draw_texture_scale(g->icon, 28, y + 3, 46.0f / vita2d_texture_get_width(g->icon), 46.0f / vita2d_texture_get_height(g->icon));
 		text_fit(88, y + 33, INK, 1.0f, g->name, 560);
 		const char *state = g->conflict ? "Needs a choice" : g->when[0] ? g->when : "Not synced yet";
 		unsigned sc = g->conflict ? WARN : g->when[0] ? GOOD : FAINT;
-		text(920 - 12 - text_w(0.9f, state), y + 33, sc, 0.9f, state);
+		text(920 - 12 - text_w(1.0f, state), y + 33, sc, 1.0f, state);
 	}
-	if (ngames > rows) { char m[32]; snprintf(m, sizeof m, "%d of %d", sel + 1, ngames); text(920 - text_w(0.8f, m), 524, FAINT, 0.8f, m); }
+	if (ngames > rows) { char m[32]; snprintf(m, sizeof m, "%d of %d", sel + 1, ngames); text(920 - text_w(1.0f, m), 524, FAINT, 1.0f, m); }
 	button_hint(30, 524, "\xE2\x9C\x95", RGBA(122, 166, 255), "Open");
 	button_hint(150, 524, "\xE2\x96\xB3", RGBA(88, 214, 171), "Pair a computer");
 	button_hint(370, 524, "\xE2\x96\xA1", RGBA(240, 140, 200), "Settings");
@@ -332,7 +333,7 @@ static void draw_pair(void) {
 		text(480 - text_w(3.2f, spaced) / 2, 300, AMBER, 3.2f, spaced);
 		int left = 300 - (int)((sceKernelGetProcessTimeWide() - pair_t0) / 1000000); if (left < 0) left = 0;
 		char t[64]; snprintf(t, sizeof t, "This code works for %d:%02d more.", left / 60, left % 60);
-		text(480 - text_w(0.9f, t) / 2, 380, FAINT, 0.9f, t);
+		text(480 - text_w(1.0f, t) / 2, 380, FAINT, 1.0f, t);
 	}
 	button_hint(30, 524, "\xE2\x97\x8B", RGBA(255, 110, 110), "Back");
 }
@@ -357,9 +358,9 @@ static void play_now(Game *g) {
 }
 static void side(int x, const char *who, const char *when, const char *what) {
 	vita2d_draw_rectangle(x, 200, 410, 120, CARD_HI);
-	text(x + 18, 232, AMBER, 0.95f, who);
-	text_fit(x + 18, 266, INK, 1.05f, or_(when, "Changed since the last sync"), 374);
-	text_fit(x + 18, 298, DIM, 0.9f, or_(what, ""), 374);
+	text(x + 18, 232, AMBER, 1.0f, who);
+	text_fit(x + 18, 266, INK, 1.0f, or_(when, "Changed since the last sync"), 374);
+	text_fit(x + 18, 298, DIM, 1.0f, or_(what, ""), 374);
 }
 static void draw_game(void) {
 	Game *g = cur_game();
@@ -369,18 +370,18 @@ static void draw_game(void) {
 	text_fit(106, 108, INK, 1.4f, g->name, 820);
 	if (g->conflict) {
 		char l[200]; snprintf(l, sizeof l, "Your Vita and %s both have new progress since the last sync. Which save should this game continue from?", or_(g->pc_name, "your computer"));
-		wrap(30, 158, DIM, 0.95f, l, 900, 26);
+		wrap(30, 158, DIM, 1.0f, l, 900, 26);
 		char on_pc[80]; snprintf(on_pc, sizeof on_pc, "On %s", or_(g->pc_name, "your computer"));
 		side(30, "On this Vita", g->vita_when, g->vita_detail); side(520, on_pc, g->pc_when, g->pc_detail);
-		wrap(30, 360, FAINT, 0.85f, "The save you don't keep is backed up, so you can change your mind later.", 900, 24);
+		wrap(30, 360, FAINT, 1.0f, "The save you don't keep is backed up, so you can change your mind later.", 900, 24);
 		button_hint(30, 524, "\xE2\x9C\x95", RGBA(122, 166, 255), "Keep the Vita's");
 		button_hint(240, 524, "\xE2\x96\xA1", RGBA(240, 140, 200), "Use the computer's");
 		button_hint(490, 524, "\xE2\x96\xB3", RGBA(88, 214, 171), "Play now");
 		button_hint(660, 524, "\xE2\x97\x8B", RGBA(255, 110, 110), "Back");
 	} else {
 		text(30, 170, g->when[0] ? GOOD : DIM, 1.0f, g->when[0] ? g->when : "Not synced yet");
-		if (game_msg[0]) wrap(30, 220, WARN, 0.95f, game_msg, 900, 26);
-		else wrap(30, 220, DIM, 0.95f, "It syncs on its own: before it starts and after it closes, here and on a paired computer.", 900, 26);
+		if (game_msg[0]) wrap(30, 220, WARN, 1.0f, game_msg, 900, 26);
+		else wrap(30, 220, DIM, 1.0f, "It syncs on its own: before it starts and after it closes, here and on a paired computer.", 900, 26);
 		button_hint(30, 524, "\xE2\x96\xB3", RGBA(88, 214, 171), "Play now");
 		button_hint(200, 524, "\xE2\x97\x8B", RGBA(255, 110, 110), "Back");
 	}
@@ -393,18 +394,19 @@ static void draw_settings(void) {
 	items[n++] = off ? "Turn the background service back on" : inst ? "Remove the background service" : "Install the background service";
 	for (int i = 0; i < npcs && n < 10; i++) items[n++] = pcs[i].name;
 	if (settings_sel >= n) settings_sel = n - 1;
-	wrap(30, y, DIM, 0.9f, inst ? "The service starts with your Vita and syncs in the background. Removing it takes effect at the next restart; your pairings and backups stay."
+	wrap(30, y, DIM, 1.0f, inst ? "The service starts with your Vita and syncs in the background. Removing it takes effect at the next restart; your pairings and backups stay."
 	                            : "The service starts with your Vita and syncs in the background. Installing adds two lines to your taiHEN config (backed up first) and takes effect at the next restart.", 880, 24);
 	y += 66;
 	for (int i = 0; i < n; i++) {
-		if (i == 1) { text(30, y + 22, DIM, 0.9f, "Paired computers (Cross removes one):"); y += 34; }
+		if (i == 1) { text(30, y + 22, DIM, 1.0f, "Paired computers (Cross removes one):"); y += 34; }
 		vita2d_draw_rectangle(20, y, 920, 44, i == settings_sel ? CARD_HI : CARD);
+		if (i == settings_sel) vita2d_draw_rectangle(20, y, 4, 44, AMBER);
 		text_fit(36, y + 30, i == 0 ? AMBER : INK, 1.0f, items[i], 860);
 		y += 50;
 	}
-	if (install_msg[0]) wrap(30, y + 30, WARN, 0.9f, install_msg, 880, 24);
+	if (install_msg[0]) wrap(30, y + 30, WARN, 1.0f, install_msg, 880, 24);
 	char about[96]; snprintf(about, sizeof about, "Firmware %s \xC2\xB7 Nativ Sync 0.1", has_firmware ? fw : "not supported");
-	text(30, 494, FAINT, 0.8f, about);
+	text(30, 494, FAINT, 1.0f, about);
 	button_hint(30, 524, "\xE2\x9C\x95", RGBA(122, 166, 255), "Choose");
 	button_hint(200, 524, "\xE2\x97\x8B", RGBA(255, 110, 110), "Back");
 	if (install_msg[0] && strstr(install_msg, "Restart")) button_hint(360, 524, "\xE2\x96\xB3", RGBA(88, 214, 171), "Restart now");
