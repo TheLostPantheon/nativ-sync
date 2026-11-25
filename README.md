@@ -3,8 +3,8 @@
 The PlayStation Vita side of [Project Nativ](https://github.com/TheLostPantheon/nativ)'s save sync: play a game on your
 Vita, carry on in Nativ on your computer, and back again.
 
-**Status: in development.** Running on a 3.65 Vita: the app installs the service (taiHEN config backed up first), the
-service starts with the Vita, pairing works from the app's code screen, and Nativ (merged: Settings, Vita sync) syncs
+**Status: first release (v0.1.0), a beta.** Tested on a 3.65 Vita: the app installs the service (taiHEN config backed up first), the
+service starts with the Vita, pairing works from the app's code screen, and Nativ (v0.1.6 and later: Settings, Vita sync) syncs
 with it, including the conflict choice at launch on either side.
 
 ## How it works
@@ -29,7 +29,8 @@ first, on the side it's replaced on. DESIGN.md has the rules, the conflict choic
 
 ## Installing
 
-1. Install `nativ_sync.vpk`, with VitaDB Downloader or VitaShell.
+1. Download `nativ_sync.vpk` from this repository's [Releases](https://github.com/TheLostPantheon/nativ-sync/releases)
+   page and install it with VitaShell.
 2. Open **Nativ Sync**, press □ for Settings, choose **Install the background service**, and restart the Vita. Installing
    adds two lines to your taiHEN config, backed up first as `config.txt.nativ-sync-backup`.
 3. In the app, press △ to **Pair a computer**: it shows a six-digit code. In Nativ, open Settings, Vita sync, Find my
